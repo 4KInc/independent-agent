@@ -42,6 +42,12 @@ RESOURCE_URL = os.environ.get("RESOURCE_URL", "http://localhost:8081")
 MCP_BEARER_TOKEN = os.environ.get("MCP_BEARER_TOKEN", "")
 AGENT_ID = "demo-ui-agent-01"
 
+# Multi-agent service URLs
+AUDITOR_URL = os.environ.get("AUDITOR_URL", "https://agent-auth-gateway-auditor-lwmxdereeq-uc.a.run.app")
+RECOMMENDER_URL = os.environ.get("RECOMMENDER_URL", "https://agent-auth-gateway-recommender-lwmxdereeq-uc.a.run.app")
+INVESTIGATOR_URL = os.environ.get("INVESTIGATOR_URL", "https://agent-auth-investigator-lwmxdereeq-uc.a.run.app")
+COORDINATOR_URL = os.environ.get("COORDINATOR_URL", "https://agent-auth-gateway-coordinator-lwmxdereeq-uc.a.run.app")
+
 # --- Rate limiting (in-memory, per IP) ---
 _rate_buckets: dict[str, collections.deque] = {}
 RATE_LIMIT = 10  # requests per minute
@@ -685,6 +691,163 @@ async def mcp_call(body: dict, request: Request):
                 return {"tool": tool_name, "result": parsed, "duration_ms": duration_ms}
     except Exception as e:
         return {"tool": tool_name, "error": type(e).__name__, "detail": str(e)[:300]}
+
+
+# --- Multi-agent dashboard proxy endpoints ---
+_AGENT_URLS = {
+    "auditor": AUDITOR_URL,
+    "recommender": RECOMMENDER_URL,
+    "investigator": INVESTIGATOR_URL,
+    "coordinator": COORDINATOR_URL,
+}
+
+
+@app.get("/api/agents/{agent_name}/{path:path}")
+async def proxy_agent(agent_name: str, path: str, request: Request):
+    """Proxy requests to the multi-agent services."""
+    _check_rate_limit(_get_ip(request))
+    base = _AGENT_URLS.get(agent_name)
+    if not base:
+        raise HTTPException(404, f"Unknown agent: {agent_name}")
+    url = f"{base}/{path}"
+    params = dict(request.query_params)
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.get(url, params=params)
+            try:
+                return resp.json()
+            except Exception:
+                return {"raw": resp.text[:500], "status": resp.status_code}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)[:200]}
+
+
+@app.post("/api/agents/{agent_name}/{path:path}")
+async def proxy_agent_post(agent_name: str, path: str, request: Request):
+    """Proxy POST requests to the multi-agent services."""
+    _check_rate_limit(_get_ip(request))
+    base = _AGENT_URLS.get(agent_name)
+    if not base:
+        raise HTTPException(404, f"Unknown agent: {agent_name}")
+    url = f"{base}/{path}"
+    body = await request.json()
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.post(url, json=body)
+            try:
+                return resp.json()
+            except Exception:
+                return {"raw": resp.text[:500], "status": resp.status_code}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)[:200]}
+
+
+@app.get("/api/agents-health")
+async def agents_health():
+    """Health check all five agents."""
+    results = {}
+    async with httpx.AsyncClient(timeout=8) as client:
+        # Gateway
+        try:
+            resp = await client.get(f"{GATEWAY_REST_URL}/health")
+            results["gateway"] = {"ok": resp.status_code == 200, "status": resp.status_code}
+        except Exception as e:
+            results["gateway"] = {"ok": False, "error": str(e)[:100]}
+        # Agent services
+        for name, url in _AGENT_URLS.items():
+            try:
+                resp = await client.get(f"{url}/health")
+                results[name] = {"ok": resp.status_code == 200, "status": resp.status_code}
+            except Exception as e:
+                results[name] = {"ok": False, "error": str(e)[:100]}
+    # Also fetch signing keys
+    keys = {}
+    async with httpx.AsyncClient(timeout=8) as client:
+        try:
+            resp = await client.get(f"{GATEWAY_REST_URL}/keys")
+            gw_keys = resp.json().get("keys", [])
+            if gw_keys:
+                keys["gateway"] = gw_keys[0].get("kid", "?")
+        except Exception:
+            pass
+        for name, url in _AGENT_URLS.items():
+            key_path = f"{name}-keys" if name != "auditor" else "audit-keys"
+            try:
+                resp = await client.get(f"{url}/{key_path}")
+                agent_keys = resp.json().get("keys", [])
+                if agent_keys:
+                    keys[name] = agent_keys[0].get("kid", "?")
+            except Exception:
+                pass
+    return {"agents": results, "keys": keys}
+
+
+@app.get("/api/activity-stream")
+async def activity_stream(limit: int = 20):
+    """Unified activity stream across all agents."""
+    activities = []
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Gateway receipts
+        try:
+            resp = await client.get(f"{GATEWAY_REST_URL}/chain")
+            chain = resp.json()
+            for r in (chain.get("receipts", []) or [])[-10:]:
+                body = r.get("body", {})
+                meta = r.get("_meta", {})
+                activities.append({
+                    "agent": "Gateway",
+                    "type": "receipt",
+                    "ts": body.get("ts", ""),
+                    "summary": f"Receipt #{body.get('seq')} issued. {body.get('decision','?').upper()}. Agent {meta.get('agent_id','?')} {meta.get('action','?')} on {meta.get('resource','?')}.",
+                    "data": {"seq": body.get("seq"), "decision": body.get("decision")},
+                })
+        except Exception:
+            pass
+        # Auditor reports
+        try:
+            resp = await client.get(f"{AUDITOR_URL}/audit-reports", params={"tenant": "hackathon-demo", "limit": 10})
+            for r in resp.json().get("reports", []):
+                b = r.get("body", {})
+                activities.append({
+                    "agent": "Auditor",
+                    "type": "audit",
+                    "ts": b.get("audited_at", ""),
+                    "summary": f"Audit #{b.get('audit_id','?')[:8]}... Verdict {b.get('verdict','?')}. {len(b.get('citations',[]))} citations.",
+                    "data": {"verdict": b.get("verdict"), "receipt_seq": b.get("receipt_seq")},
+                })
+        except Exception:
+            pass
+        # Recommender proposals
+        try:
+            resp = await client.get(f"{RECOMMENDER_URL}/proposals", params={"tenant": "hackathon-demo", "limit": 10})
+            for p in resp.json().get("proposals", []):
+                b = p.get("body", {})
+                activities.append({
+                    "agent": "Recommender",
+                    "type": "proposal",
+                    "ts": b.get("proposed_at", ""),
+                    "summary": f"Proposal: {b.get('change_type','?')}. Confidence {b.get('confidence','?')}.",
+                    "data": {"confidence": b.get("confidence")},
+                })
+        except Exception:
+            pass
+        # Investigator incidents
+        try:
+            resp = await client.get(f"{INVESTIGATOR_URL}/incidents", params={"tenant": "hackathon-demo", "limit": 10})
+            for inc in resp.json().get("incidents", []):
+                b = inc.get("body", {})
+                activities.append({
+                    "agent": "Investigator",
+                    "type": "incident",
+                    "ts": b.get("created_at", ""),
+                    "summary": f"Incident: {b.get('severity','?')} severity. {b.get('executive_summary','')[:80]}...",
+                    "data": {"severity": b.get("severity")},
+                })
+        except Exception:
+            pass
+    # Sort by timestamp descending
+    activities.sort(key=lambda a: a.get("ts", ""), reverse=True)
+    return {"activities": activities[:limit]}
 
 
 @app.get("/api/health")

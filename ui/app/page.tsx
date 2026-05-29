@@ -686,6 +686,7 @@ export default function Page() {
           <Shield className="w-5 h-5 text-primary" /><span className="font-semibold text-sm">Agent Authorization Gateway</span><span className="text-xs text-muted-foreground hidden sm:inline">Interactive Demo</span>
           <Separator orientation="vertical" className="h-5 mx-1" />
           <a href="/" className="text-sm font-medium text-foreground">Demo</a>
+          <a href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
           <a href="/integrations" className="text-sm text-muted-foreground hover:text-foreground transition-colors">API & Integrations</a>
           <div className="flex-1" /><ThemeToggle />
           <a href="https://github.com/4KInc/agent-authorization-gateway" target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground transition-colors"><ExternalLink className="w-4 h-4" /></a>
