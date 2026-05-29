@@ -385,12 +385,12 @@ print("Receipt verified: signature valid, hash matches")`;
 
   return (
     <div className="space-y-6">
-      <p className="text-xs text-muted-foreground border-l-2 border-zinc-300 dark:border-zinc-700 pl-3">Section 1 verifies a receipt's signature in isolation. Section 2 verifies the full chain. Both run against the gateway's published public key. Amber means the verifier could not reach a passing conclusion — usually because a referenced key is unavailable.</p>
+      <p className="text-xs text-muted-foreground border-l-2 border-zinc-300 dark:border-zinc-700 pl-3">Section 1 verifies a receipt's signature AND its link to the immediate predecessor (bounded chain check). Section 2 verifies every link from genesis to head. Amber means the verifier could not reach a passing conclusion.</p>
       {/* Section 1: Verify a receipt's signature */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Verify a receipt's signature</CardTitle>
-          <p className="text-sm text-muted-foreground">Pick any receipt to cryptographically verify its Ed25519 signature and body hash against the gateway's public key. Chain integrity is verified separately below.</p>
+          <p className="text-sm text-muted-foreground">Pick any receipt to verify its Ed25519 signature and the link to its immediate predecessor. Full chain integrity is verified separately in Section 2.</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-end gap-3">
@@ -419,9 +419,9 @@ print("Receipt verified: signature valid, hash matches")`;
             const amberCodes = new Set(["KID_UNRESOLVED", "KID_MISMATCH", "KEY_UNAVAILABLE"]);
             const errors = verifyResult.errors || [];
             const hasAmberError = errors.length > 0 && errors.every((e: any) => amberCodes.has(e.code));
-            const isGreen = verifyResult.receipt_integrity === "PASS" && errors.length === 0;
-            const isAmber = hasAmberError || (!verifyResult.receipt_integrity && errors.length === 0);
-            const isRed = verifyResult.receipt_integrity === "FAIL" || (errors.length > 0 && !hasAmberError);
+            const isGreen = verifyResult.receipt_integrity === "PASS" && verifyResult.chain_validity === "PASS" && errors.length === 0;
+            const isAmber = verifyResult.receipt_integrity === "PASS" && verifyResult.chain_validity === "INCONCLUSIVE";
+            const isRed = verifyResult.receipt_integrity === "FAIL" || verifyResult.chain_validity === "FAIL" || (errors.length > 0 && !isAmber);
             const borderClass = isGreen ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20"
               : isAmber ? "border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20"
               : "border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20";
@@ -429,14 +429,14 @@ print("Receipt verified: signature valid, hash matches")`;
               <Card className={borderClass}>
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-center gap-2">
-                    {isGreen && <><CheckCircle2 className="w-5 h-5 text-emerald-600" /><Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20">Signature verified</Badge></>}
-                    {isAmber && <><AlertTriangle className="w-5 h-5 text-amber-600" /><Badge className="bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-600/20">Could not verify signature</Badge></>}
+                    {isGreen && <><CheckCircle2 className="w-5 h-5 text-emerald-600" /><Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20">Verified</Badge></>}
+                    {isAmber && <><AlertTriangle className="w-5 h-5 text-amber-600" /><Badge className="bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-600/20">Could not fully verify</Badge></>}
                     {isRed && <><XCircle className="w-5 h-5 text-rose-600" /><Badge variant="destructive">Verification failed</Badge></>}
                   </div>
-                  {isGreen && <p className="text-sm text-emerald-700 dark:text-emerald-400">Ed25519 signature valid. Receipt body hash matches.</p>}
+                  {isGreen && <p className="text-sm text-emerald-700 dark:text-emerald-400">Ed25519 signature valid. Body hash matches. Linkage to previous receipt verified.</p>}
                   {isAmber && (
                     <div className="space-y-2">
-                      <p className="text-sm text-amber-700 dark:text-amber-400">The signing key referenced by this receipt's kid could not be resolved from /keys. Verification is unresolved, not failed.</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Signature is valid but the linkage to the previous receipt could not be checked.</p>
                       <p className="text-xs text-muted-foreground">This usually means the receipt was signed by a key that is no longer published. Treat as untrusted until the key becomes available or the receipt is re-verified against a different source.</p>
                     </div>
                   )}

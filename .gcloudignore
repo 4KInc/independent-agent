@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pem
+.env
+node_modules
+ui/.next
+ui/out
+ui/node_modules
+.DS_Store

@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir fastapi uvicorn httpx cryptography PyJWT mcp
 COPY agent/ agent/
 COPY server/ server/
 COPY config.py serve_ui.py ./
-COPY ui/out/ static/
+COPY static/ static/
 
 EXPOSE 8080
 
