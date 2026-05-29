@@ -385,7 +385,7 @@ print("Receipt verified: signature valid, hash matches")`;
 
   return (
     <div className="space-y-6">
-      <p className="text-xs text-muted-foreground border-l-2 border-zinc-300 dark:border-zinc-700 pl-3">Section 1 verifies a receipt's signature AND its link to the immediate predecessor (bounded chain check). Section 2 verifies every link from genesis to head. Amber means the verifier could not reach a passing conclusion.</p>
+      <p className="text-xs text-muted-foreground border-l-2 border-zinc-300 dark:border-zinc-700 pl-3">Section 1 verifies a receipt's signature and its link to the immediate predecessor. Section 2 verifies full chain integrity and shows the latest on-chain anchor on Base L2. All verification uses the gateway's published public key; anchor verification uses a public Base RPC.</p>
       {/* Section 1: Verify a receipt's signature */}
       <Card>
         <CardHeader>
@@ -485,10 +485,11 @@ print("Receipt verified: signature valid, hash matches")`;
         </CardContent>
       </Card>
 
-      {/* Section 2: Chain integrity + Merkle */}
+      {/* Section 2: Chain integrity + Merkle + On-chain anchor */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Chain integrity & Merkle commitment</CardTitle>
+          <p className="text-sm text-muted-foreground">Verifies every receipt from genesis to head. Merkle roots are anchored to Base L2 mainnet for external tamper evidence.</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {chainResult?.merkle_root && (
@@ -499,6 +500,39 @@ print("Receipt verified: signature valid, hash matches")`;
                 <button onClick={() => copyText(chainResult.merkle_root)} className="shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"><Copy className="w-3.5 h-3.5" /></button>
               </div>
             </div>
+          )}
+          {/* On-chain anchor */}
+          {chainResult?.latest_anchor && (
+            <Card className="border-blue-500/20 bg-blue-50/30 dark:bg-blue-950/15">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">Merkle root anchored on Base L2</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Transaction</span>
+                  <span className="font-[var(--font-geist-mono)] break-all">
+                    <a href={chainResult.latest_anchor.basescan_url || `https://basescan.org/tx/${chainResult.latest_anchor.tx_hash}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      {String(chainResult.latest_anchor.tx_hash || "").slice(0, 18)}...
+                      <svg className="w-3 h-3 inline ml-0.5 -mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                    </a>
+                  </span>
+                  <span className="text-muted-foreground">Block</span>
+                  <span className="font-[var(--font-geist-mono)]">{chainResult.latest_anchor.block_number?.toLocaleString()}</span>
+                  <span className="text-muted-foreground">Covers</span>
+                  <span>Receipts 1 – {chainResult.latest_anchor.chain_head_seq}</span>
+                  <span className="text-muted-foreground">Chain</span>
+                  <span>Base mainnet (chain_id 8453)</span>
+                </div>
+                <a href={chainResult.latest_anchor.basescan_url || `https://basescan.org/tx/${chainResult.latest_anchor.tx_hash}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 hover:underline mt-1">
+                  View on BaseScan
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                </a>
+              </CardContent>
+            </Card>
+          )}
+          {chainResult && !chainResult.latest_anchor && chainResult.chain_validity === "PASS" && (
+            <p className="text-xs text-muted-foreground">No on-chain anchor yet. Anchoring runs every 10 receipts or hourly. Current chain has {chainResult.chain_length} receipts.</p>
           )}
           <Button onClick={handleVerifyChain} disabled={chainLoading} className="gap-2">
             {chainLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

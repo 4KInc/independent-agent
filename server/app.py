@@ -502,12 +502,42 @@ async def verify_chain(request: Request):
         # Also get stats for the Merkle root
         stats_resp = await client.get(f"{GATEWAY_REST_URL}/stats")
         stats_data = stats_resp.json()
+        # Get latest anchor for on-chain reference
+        latest_anchor = None
+        try:
+            anchors_resp = await client.get(f"{GATEWAY_REST_URL}/anchors")
+            anchors_data = anchors_resp.json()
+            on_chain = anchors_data.get("on_chain_anchors", [])
+            if on_chain:
+                latest_anchor = on_chain[0]
+        except Exception:
+            pass
+
         return {
             **verify_data,
             "chain_length": len(receipts),
             "merkle_root": stats_data.get("merkle_root"),
             "policy_version": stats_data.get("policy_version"),
+            "latest_anchor": latest_anchor,
         }
+
+
+@app.get("/api/anchors")
+async def get_anchors(request: Request):
+    """Proxy to gateway /anchors — list on-chain anchor records."""
+    _check_rate_limit(_get_ip(request))
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{GATEWAY_REST_URL}/anchors")
+        return resp.json()
+
+
+@app.get("/api/anchors/verify/{tx_hash}")
+async def verify_anchor(tx_hash: str, request: Request):
+    """Proxy to gateway /anchors/verify/{tx_hash} — verify on-chain anchor."""
+    _check_rate_limit(_get_ip(request))
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{GATEWAY_REST_URL}/anchors/verify/{tx_hash}")
+        return resp.json()
 
 
 @app.get("/api/public-key")
