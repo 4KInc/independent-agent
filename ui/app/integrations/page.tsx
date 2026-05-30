@@ -313,6 +313,32 @@ asyncio.run(main())`;
             )}
           </CardContent>
         </Card>
+
+        {/* Subsection C: A2A Protocol */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">A2A Protocol</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">Agent-to-agent interoperability surface for the Gateway. Built on Google's A2A SDK v1.1.0. Other agents discover the Gateway by querying its agent card.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-24 shrink-0">Agent Card:</span>
+                <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-700 dark:text-zinc-300 truncate">https://agent-auth-gateway-a2a-1031148889398.us-central1.run.app/.well-known/agent-card.json</code>
+                <button onClick={() => copyText("https://agent-auth-gateway-a2a-1031148889398.us-central1.run.app/.well-known/agent-card.json")} className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"><Copy className="w-3 h-3" /></button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-24 shrink-0">Skills:</span>
+                <span className="font-[var(--font-geist-mono)] text-zinc-700 dark:text-zinc-300">authorize_action, verify_receipt, get_public_key, get_chain_summary</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-24 shrink-0">Protocol docs:</span>
+                <a href="https://github.com/4KInc/agent-authorization-gateway/blob/main/docs/marketplace/A2A_INTENTS.md" target="_blank" rel="noopener"
+                  className="font-[var(--font-geist-mono)] hover:text-foreground transition-colors">docs/marketplace/A2A_INTENTS.md</a>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
