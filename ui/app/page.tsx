@@ -11,9 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Server, Network, Database, Shield, CheckCircle2, XCircle, Loader2,
-  ChevronDown, ChevronRight, Copy, ExternalLink, RefreshCw, Sun, Moon, Monitor,
+  ChevronDown, ChevronRight, Copy, ExternalLink, RefreshCw,
   Lock, KeyRound, AlertTriangle
 } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
 
 // --- Config ---
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -657,21 +658,6 @@ print("Receipt verified: signature valid, hash matches")`;
   );
 }
 
-// --- Theme ---
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"light"|"dark"|"system">("system");
-  useEffect(() => { const s = localStorage.getItem("theme") as any; if (s) setTheme(s); }, []);
-  useEffect(() => {
-    const root = document.documentElement; root.classList.remove("light", "dark");
-    if (theme === "system") { root.classList.add(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
-    else root.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-  const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
-  return <Button variant="ghost" size="sm" onClick={() => setTheme(next)} className="h-8 w-8 p-0"><Icon className="w-4 h-4" /></Button>;
-}
-
 // --- App ---
 export default function Page() {
   const [chainRefreshKey, setChainRefreshKey] = useState(0);
@@ -681,17 +667,7 @@ export default function Page() {
   }, []);
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="max-w-[1440px] mx-auto flex items-center h-14 px-6 gap-4">
-          <Shield className="w-5 h-5 text-primary" /><span className="font-semibold text-sm">Agent Authorization Gateway</span><span className="text-xs text-muted-foreground hidden sm:inline">Interactive Demo</span>
-          <Separator orientation="vertical" className="h-5 mx-1" />
-          <a href="/" className="text-sm font-medium text-foreground">Demo</a>
-          <a href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
-          <a href="/integrations" className="text-sm text-muted-foreground hover:text-foreground transition-colors">API & Integrations</a>
-          <div className="flex-1" /><ThemeToggle />
-          <a href="https://github.com/4KInc/agent-authorization-gateway" target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground transition-colors"><ExternalLink className="w-4 h-4" /></a>
-        </div>
-      </header>
+      <SiteHeader />
       <div className="flex-1 max-w-[1440px] mx-auto w-full">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] min-h-0">
           <aside className="border-r p-4 overflow-y-auto hidden lg:block"><StatusPanel /></aside>

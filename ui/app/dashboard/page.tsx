@@ -8,9 +8,10 @@ import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Shield, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
-  ChevronRight, Copy, ExternalLink, Sun, Moon, Monitor, CheckCircle2, XCircle,
+  ChevronRight, Copy, ExternalLink, CheckCircle2, XCircle,
   AlertTriangle, Clock, Activity,
 } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -22,20 +23,6 @@ function JsonView({ data }: { data: unknown }) {
       {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
     </pre>
   );
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"light"|"dark"|"system">("system");
-  useEffect(() => { const s = localStorage.getItem("theme") as any; if (s) setTheme(s); }, []);
-  useEffect(() => {
-    const root = document.documentElement; root.classList.remove("light", "dark");
-    if (theme === "system") root.classList.add(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    else root.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-  const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
-  return <Button variant="ghost" size="sm" onClick={() => setTheme(next)} className="h-8 w-8 p-0"><Icon className="w-4 h-4" /></Button>;
 }
 
 type AgentInfo = { id: string; name: string; icon: any; type: string; role: string; badgeColor: string };
@@ -103,7 +90,7 @@ function GatewayView() {
 function AuditorView() {
   const [reports, setReports] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
-  useEffect(() => { fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setReports(d.reports || [])).catch(() => {}); }, []);
+  useEffect(() => { fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=200`).then(r => r.json()).then(d => setReports(d.reports || [])).catch(() => {}); }, []);
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">Audit Reports</h3>
@@ -142,6 +129,7 @@ function AuditorView() {
 
 function RecommenderView() {
   const [proposals, setProposals] = useState<any[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
   useEffect(() => { fetch(`${BASE}/api/agents/recommender/proposals?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setProposals(d.proposals || [])).catch(() => {}); }, []);
   return (
     <div className="space-y-3">
@@ -149,16 +137,67 @@ function RecommenderView() {
       {proposals.length === 0 && <p className="text-sm text-muted-foreground">Recommender analyzes audit patterns hourly. Proposals appear when CONFLICT patterns warrant human review.</p>}
       {proposals.map((p: any, i: number) => {
         const b = p.body || {};
+        const trigger = b.trigger || {};
+        const change = b.proposed_change || {};
+        const diff = change.diff || {};
+        const citations = change.supporting_citations || [];
         return (
-          <Card key={i}>
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <Badge className={b.confidence === "HIGH" ? "bg-rose-600/15 text-rose-600 text-[10px]" : b.confidence === "MEDIUM" ? "bg-amber-600/15 text-amber-600 text-[10px]" : "text-[10px]"} variant="outline">{b.confidence}</Badge>
-                <span className="text-xs font-medium">{b.change_type}</span>
+          <div key={i} className="border border-border rounded-lg">
+            <button onClick={() => setExpanded(expanded === i ? null : i)} className="w-full flex items-center gap-3 text-xs py-2 px-3 text-left cursor-pointer">
+              <Badge className={b.confidence === "HIGH" ? "bg-rose-600/15 text-rose-600 text-[10px]" : b.confidence === "MEDIUM" ? "bg-amber-600/15 text-amber-600 text-[10px]" : "text-[10px]"} variant="outline">{b.confidence}</Badge>
+              <span className="text-xs font-medium">{change.change_type || trigger.type}</span>
+              <span className="truncate flex-1 text-muted-foreground">{trigger.pattern_summary?.slice(0, 80) || change.rationale?.slice(0, 80)}...</span>
+              <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform ${expanded === i ? "rotate-90" : ""}`} />
+            </button>
+            {expanded === i && (
+              <div className="px-3 pb-3 space-y-3">
+                {trigger.pattern_summary && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Pattern</p>
+                    <p className="text-xs">{trigger.pattern_summary}</p>
+                  </div>
+                )}
+                {(diff.current || diff.proposed) && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Policy Diff</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <pre className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-rose-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">{typeof diff.current === "string" ? diff.current : JSON.stringify(diff.current, null, 2)}</pre>
+                      <pre className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-emerald-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">{typeof diff.proposed === "string" ? diff.proposed : JSON.stringify(diff.proposed, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
+                {change.rationale && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Rationale</p>
+                    <p className="text-xs">{change.rationale}</p>
+                  </div>
+                )}
+                {citations.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Supporting Citations</p>
+                    {citations.map((c: any, j: number) => (
+                      <div key={j} className="bg-muted/30 rounded p-2 text-xs mb-1">
+                        <span className="font-medium">Source: {c.source}</span>{c.page ? `, page ${c.page}` : ""}
+                        <p className="text-muted-foreground mt-1 italic">"{c.passage?.slice(0, 200)}..."</p>
+                        <span className="text-[10px] text-muted-foreground">Audit: <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{c.audit_report_id?.slice(0, 12)}</code></span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {trigger.audit_report_ids?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Trigger Reports</p>
+                    <div className="flex flex-wrap gap-1">
+                      {trigger.audit_report_ids.map((id: string, j: number) => (
+                        <code key={j} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{id.slice(0, 12)}</code>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground">Signed by: {b.recommender_kid} | Sig: {p.signature?.slice(0, 30)}...</div>
               </div>
-              <p className="text-xs text-muted-foreground">{b.rationale?.slice(0, 150)}...</p>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         );
       })}
     </div>
@@ -167,6 +206,7 @@ function RecommenderView() {
 
 function InvestigatorView() {
   const [incidents, setIncidents] = useState<any[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
   useEffect(() => { fetch(`${BASE}/api/agents/investigator/incidents?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setIncidents(d.incidents || [])).catch(() => {}); }, []);
   return (
     <div className="space-y-3">
@@ -174,15 +214,101 @@ function InvestigatorView() {
       {incidents.length === 0 && <p className="text-sm text-muted-foreground">Investigations trigger on CONFLICT verdicts via Pub/Sub.</p>}
       {incidents.map((inc: any, i: number) => {
         const b = inc.body || {};
+        const narrative = b.narrative || {};
+        const trigger = b.trigger || {};
+        const timeline = narrative.timeline || [];
+        const agents = narrative.agents_involved || [];
+        const actions = narrative.recommended_actions || [];
+        const evidence = b.evidence_references || {};
         return (
-          <Card key={i}>
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <Badge variant={b.severity === "CRITICAL" || b.severity === "HIGH" ? "destructive" : "outline"} className="text-[10px]">{b.severity}</Badge>
-                <span className="text-xs">{b.executive_summary?.slice(0, 100)}...</span>
+          <div key={i} className="border border-border rounded-lg">
+            <button onClick={() => setExpanded(expanded === i ? null : i)} className="w-full flex items-center gap-3 text-xs py-2 px-3 text-left cursor-pointer">
+              <Badge variant={b.severity === "CRITICAL" || b.severity === "HIGH" ? "destructive" : "outline"} className="text-[10px]">{b.severity}</Badge>
+              <span className="truncate flex-1">{narrative.summary?.slice(0, 100) || b.executive_summary?.slice(0, 100) || "Incident"}...</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">{trigger.type}</span>
+              <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform ${expanded === i ? "rotate-90" : ""}`} />
+            </button>
+            {expanded === i && (
+              <div className="px-3 pb-3 space-y-3">
+                {(narrative.summary || b.executive_summary) && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Executive Summary</p>
+                    <p className="text-xs">{narrative.summary || b.executive_summary}</p>
+                  </div>
+                )}
+                {trigger.trigger_id && (
+                  <div className="text-[10px] text-muted-foreground">Trigger: {trigger.type} | ID: <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{trigger.trigger_id?.slice(0, 12)}</code></div>
+                )}
+                {timeline.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Timeline</p>
+                    <div className="space-y-1">
+                      {timeline.map((ev: any, j: number) => (
+                        <div key={j} className="flex items-start gap-2 text-[11px] py-1 border-l-2 border-zinc-200 dark:border-zinc-700 pl-2">
+                          <span className="text-muted-foreground shrink-0 w-16">{String(ev.timestamp || "").slice(11, 19)}</span>
+                          <span className="flex-1">{ev.description || ev.event}</span>
+                          {ev.evidence_id && <code className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1 rounded shrink-0">{ev.evidence_id?.slice(0, 10)}</code>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {agents.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Agents Involved</p>
+                    <div className="flex flex-wrap gap-2">
+                      {agents.map((a: any, j: number) => (
+                        <div key={j} className="bg-muted/30 rounded px-2 py-1 text-[11px]">
+                          <span className="font-medium">{a.agent_id}</span>
+                          {a.role && <span className="text-muted-foreground"> · {a.role}</span>}
+                          {a.registration_status && <Badge variant="outline" className="text-[9px] ml-1">{a.registration_status}</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {narrative.compliance_impact && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Compliance Impact</p>
+                    <p className="text-xs">{narrative.compliance_impact}</p>
+                  </div>
+                )}
+                {narrative.root_cause_hypothesis && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Root Cause</p>
+                    <p className="text-xs">{narrative.root_cause_hypothesis}</p>
+                  </div>
+                )}
+                {actions.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Recommended Actions</p>
+                    <div className="space-y-1">
+                      {actions.map((a: any, j: number) => (
+                        <div key={j} className="flex items-start gap-2 text-xs">
+                          <Badge variant="outline" className={`text-[9px] shrink-0 ${a.priority === "IMMEDIATE" ? "bg-rose-600/15 text-rose-600 border-rose-600/20" : a.priority === "SHORT_TERM" ? "bg-amber-600/15 text-amber-600 border-amber-600/20" : ""}`}>{a.priority}</Badge>
+                          <span>{a.action || a.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(evidence.audit_report_ids?.length > 0 || evidence.receipt_seqs?.length > 0) && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Evidence References</p>
+                    <div className="flex flex-wrap gap-1">
+                      {evidence.audit_report_ids?.map((id: string, j: number) => (
+                        <code key={`a${j}`} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{id.slice(0, 12)}</code>
+                      ))}
+                      {evidence.receipt_seqs?.map((seq: number, j: number) => (
+                        <code key={`r${j}`} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">seq:{seq}</code>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground">Signed by: {b.investigator_kid} | Sig: {inc.signature?.slice(0, 30)}...</div>
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         );
       })}
     </div>
@@ -217,9 +343,9 @@ function CoordinatorView() {
           {directory.map((a: any, i: number) => (
             <div key={i} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30">
               <StatusDot ok={true} />
-              <span className="font-medium">{a.name || a.agent_name}</span>
+              <span className="font-medium">{a.agent_card?.name || a.name || a.agent_name}</span>
               <Badge variant="outline" className="text-[10px]">{a.trust_level || "TRUSTED"}</Badge>
-              <span className="text-muted-foreground truncate flex-1">{a.skills_count || a.skills?.length || "?"} skills</span>
+              <span className="text-muted-foreground truncate flex-1">{a.self_described_skills?.length || a.skills_count || a.skills?.length || "?"} skills</span>
             </div>
           ))}
         </div>
@@ -237,29 +363,32 @@ function CoordinatorView() {
         <div className="flex gap-1.5 flex-wrap mb-3">
           {examples.map(ex => <button key={ex} onClick={() => { setQuery(ex); }} className="text-[10px] px-2 py-0.5 rounded-full border border-zinc-200 dark:border-zinc-700 text-muted-foreground hover:text-foreground hover:border-primary/30 cursor-pointer transition-colors">{ex}</button>)}
         </div>
-        {routeResult && (
-          <Card className={routeResult.matched_agents?.length ? "border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/10" : "border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10"}>
-            <CardContent className="p-3">
-              {routeResult.matched_agents?.length ? (
-                <div className="space-y-2">
-                  {routeResult.matched_agents.map((m: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span className="text-sm font-medium">{m.agent_name}</span>
-                      <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]">{m.confidence}</Badge>
-                    </div>
-                  ))}
-                  <p className="text-xs text-muted-foreground">{routeResult.rationale || routeResult.matched_agents?.[0]?.rationale}</p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <XCircle className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm">{routeResult.no_match_explanation || routeResult.error || "No matching agent found"}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {routeResult && (() => {
+          const agents = routeResult.matches || routeResult.matched_agents || [];
+          return (
+            <Card className={agents.length ? "border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/10" : "border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10"}>
+              <CardContent className="p-3">
+                {agents.length ? (
+                  <div className="space-y-2">
+                    {agents.map((m: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span className="text-sm font-medium">{m.agent_name}</span>
+                        <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]">{m.confidence}</Badge>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">{routeResult.rationale || agents[0]?.rationale}</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm">{routeResult.no_match_explanation || routeResult.error || "No matching agent found"}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
       </div>
     </div>
   );
@@ -355,27 +484,17 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="max-w-[1440px] mx-auto flex items-center h-14 px-6 gap-4">
-          <Shield className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-sm">Agent Authorization Gateway</span>
-          <Separator orientation="vertical" className="h-5 mx-1" />
-          <a href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</a>
-          <a href="/dashboard" className="text-sm font-medium text-foreground">Dashboard</a>
-          <a href="/integrations" className="text-sm text-muted-foreground hover:text-foreground transition-colors">API & Integrations</a>
-          <div className="flex-1" />
-          <button onClick={toggleDemo} className={`text-[10px] px-2 py-0.5 rounded-full border cursor-pointer transition-colors ${demoMode ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20" : "text-muted-foreground border-zinc-200 dark:border-zinc-700"}`}>
-            Demo Mode: {demoMode ? "ON" : "OFF"}
-          </button>
-          <ThemeToggle />
-          <a href="https://github.com/4KInc/agent-authorization-gateway" target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground transition-colors"><ExternalLink className="w-4 h-4" /></a>
-        </div>
-      </header>
+      <SiteHeader />
 
       <div className="max-w-[1440px] mx-auto w-full p-6 space-y-6">
         {/* System Header */}
         <div>
-          <h1 className="text-xl font-bold">Multi-Agent Operations</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold">Multi-Agent Operations</h1>
+            <button onClick={toggleDemo} className={`text-[10px] px-2 py-0.5 rounded-full border cursor-pointer transition-colors ${demoMode ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20" : "text-muted-foreground border-zinc-200 dark:border-zinc-700"}`}>
+              Demo Mode: {demoMode ? "ON" : "OFF"}
+            </button>
+          </div>
           <p className="text-sm text-muted-foreground">Five agents collaborating on AI agent authorization</p>
           <div className="flex items-center gap-4 mt-2">
             {AGENTS.map(a => (

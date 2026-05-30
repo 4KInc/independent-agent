@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Shield, ExternalLink, RefreshCw, Copy, ChevronRight, Loader2,
-  Sun, Moon, Monitor, Server, Network, Database, Lock, KeyRound, CheckCircle2,
+  Server, Network, Database, Lock, KeyRound, CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -22,20 +22,6 @@ function JsonView({ data }: { data: unknown }) {
       {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
     </pre>
   );
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
-  useEffect(() => { const s = localStorage.getItem("theme") as any; if (s) setTheme(s); }, []);
-  useEffect(() => {
-    const root = document.documentElement; root.classList.remove("light", "dark");
-    if (theme === "system") { root.classList.add(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
-    else root.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-  const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
-  return <Button variant="ghost" size="sm" onClick={() => setTheme(next)} className="h-8 w-8 p-0"><Icon className="w-4 h-4" /></Button>;
 }
 
 // --- MCP Tool Card ---
@@ -243,19 +229,7 @@ asyncio.run(main())`;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="max-w-[1440px] mx-auto flex items-center h-14 px-6 gap-4">
-          <Shield className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-sm">Agent Authorization Gateway</span>
-          <span className="text-xs text-muted-foreground hidden sm:inline">Interactive Demo</span>
-          <Separator orientation="vertical" className="h-5 mx-1" />
-          <a href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</a>
-          <a href="/integrations" className="text-sm font-medium text-foreground">API & Integrations</a>
-          <div className="flex-1" />
-          <ThemeToggle />
-          <a href="https://github.com/4KInc/agent-authorization-gateway" target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground transition-colors"><ExternalLink className="w-4 h-4" /></a>
-        </div>
-      </header>
+      <SiteHeader />
 
       <div className="flex-1 max-w-[1440px] mx-auto w-full p-6 space-y-8">
         {/* Subsection A: REST API */}
