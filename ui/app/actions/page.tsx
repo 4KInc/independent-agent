@@ -37,6 +37,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [riskLevel, setRiskLevel] = useState("");
+  const [resourceType, setResourceType] = useState("db");
   const [humanApproval, setHumanApproval] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -54,7 +55,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action_id: actionId, display_name: displayName,
-          description, risk_level: riskLevel,
+          description, risk_level: riskLevel, resource_type: resourceType,
           requires_human_approval: humanApproval,
         }),
       });
@@ -70,7 +71,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
 
   function reset() {
     setActionId(""); setDisplayName(""); setDescription("");
-    setRiskLevel(""); setHumanApproval(false); setSuccess(null); setError("");
+    setRiskLevel(""); setResourceType("db"); setHumanApproval(false); setSuccess(null); setError("");
   }
 
   if (success) {
@@ -130,13 +131,20 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               <option value="critical">Critical - administrative or irreversible</option>
             </select>
           </div>
-          <div className="space-y-1.5 flex items-end">
-            <label className="flex items-center gap-2 text-sm cursor-pointer pb-2">
-              <input type="checkbox" checked={humanApproval} onChange={e => setHumanApproval(e.target.checked)}
-                className="rounded border-zinc-300" />
-              Requires human approval
-            </label>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Resource Type <span className="text-rose-500">*</span></label>
+            <select className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
+              value={resourceType} onChange={e => setResourceType(e.target.value)}>
+              <option value="db">Database</option>
+            </select>
           </div>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={humanApproval} onChange={e => setHumanApproval(e.target.checked)}
+              className="rounded border-zinc-300" />
+            Requires human approval
+          </label>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Description</label>
@@ -177,6 +185,7 @@ function ActionsList({ actions, loading, onRevoke }: { actions: any[]; loading: 
               <Zap className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <code className="font-[var(--font-geist-mono)] font-medium w-28 shrink-0">{a.action_id}</code>
               <span className="text-muted-foreground truncate flex-1">{a.display_name}</span>
+              {a.resource_type && <Badge className="text-[10px] shrink-0 bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-600/20">{a.resource_type}</Badge>}
               <Badge className={`text-[10px] shrink-0 ${RISK_STYLES[a.risk_level] || ""}`}>{a.risk_level}</Badge>
               {a.requires_human_approval && (
                 <Badge variant="outline" className="text-[10px] shrink-0">
