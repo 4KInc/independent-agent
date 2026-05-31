@@ -42,6 +42,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [privateKeyPem, setPrivateKeyPem] = useState("");
   const [keySaved, setKeySaved] = useState(false);
   const [agentCardUrl, setAgentCardUrl] = useState("");
+  const [liveChallengeUrl, setLiveChallengeUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
@@ -204,6 +205,9 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       if (agentCardUrl.trim()) {
         payload.agent_card_url = agentCardUrl.trim();
       }
+      if (liveChallengeUrl.trim()) {
+        payload.live_challenge_url = liveChallengeUrl.trim();
+      }
       const resp = await fetch(`${BASE}/api/agents/gateway/agents/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -240,6 +244,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
     setAgentId("");
     setPastedKey("");
     setAgentCardUrl("");
+    setLiveChallengeUrl("");
     setGeneratedJwk(null);
     setPrivateKeyObj(null);
     setPrivateKeyPem("");
@@ -293,6 +298,23 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           {success.agent_card_verification === "skipped" && agentCardUrl === "" && (
             <div className="text-xs text-muted-foreground">
               A2A card verification skipped — no card URL provided.
+            </div>
+          )}
+          {success.live_challenge_verification === "verified" && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+              <CheckCircle2 className="w-3 h-3" />
+              Live challenge passed — agent is reachable and controls the key
+            </div>
+          )}
+          {success.live_challenge_verification === "failed" && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                <AlertTriangle className="w-3 h-3" />
+                Live challenge failed: {success.live_challenge_verification_reason}
+              </div>
+              <p className="text-xs text-muted-foreground ml-5">
+                Registration succeeded. The live challenge can be retried after deployment.
+              </p>
             </div>
           )}
           <Button variant="outline" size="sm" onClick={reset}>Register another agent</Button>
@@ -415,6 +437,24 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </p>
         </div>
 
+        {/* Live Challenge URL (optional) */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">
+            Live Challenge URL <span className="text-xs text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            type="url"
+            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
+            placeholder="https://your-agent.example.com/live-challenge"
+            value={liveChallengeUrl}
+            onChange={e => setLiveChallengeUrl(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            If your agent accepts signed challenges, the Gateway will POST a fresh nonce and verify
+            the response. Proves the agent is reachable AND controls the private key right now.
+          </p>
+        </div>
+
         {/* Error */}
         {error && (
           <div className="rounded-md border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 p-3">
@@ -462,6 +502,7 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
             <th className="py-2 pr-4 font-medium">Agent ID</th>
             <th className="py-2 pr-4 font-medium">Key ID</th>
             <th className="py-2 pr-4 font-medium">Card</th>
+            <th className="py-2 pr-4 font-medium">Live</th>
             <th className="py-2 font-medium">Registered</th>
           </tr>
         </thead>
@@ -496,6 +537,21 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
                   </span>
                 )}
                 {(!agent.agent_card_verification || agent.agent_card_verification === "skipped") && (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              <td className="py-2.5 pr-4">
+                {agent.live_challenge_verification === "verified" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600" title="Agent is reachable and controls the key">
+                    <CheckCircle2 className="w-3 h-3" /> Live
+                  </span>
+                )}
+                {agent.live_challenge_verification === "failed" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-600" title={agent.live_challenge_verification_reason || ""}>
+                    <AlertTriangle className="w-3 h-3" /> Failed
+                  </span>
+                )}
+                {(!agent.live_challenge_verification || agent.live_challenge_verification === "skipped") && (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
               </td>
