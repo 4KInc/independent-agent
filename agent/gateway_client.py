@@ -103,14 +103,59 @@ async def register_rest(
     agent_id: str,
     private_key: Ed25519PrivateKey,
 ) -> dict:
-    """Register via REST API (POST /agents/register). No MCP needed."""
+    """Register via REST API with Proof of Possession.
+
+    Two-step challenge-response:
+    1. POST /agents/register-challenge -> nonce
+    2. Sign nonce, POST /agents/register with proof
+    """
     import httpx
+    import time as _time
     jwk = public_key_jwk(private_key)
+    base = gateway_rest_url.rstrip("/")
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(
-            f"{gateway_rest_url.rstrip('/')}/agents/register",
-            json={"agent_id": agent_id, "public_key": jwk},
-        )
+        # Step 1: challenge
+        ch_resp = await client.post(f"{base}/agents/register-challenge", json={"agent_id": agent_id})
+        ch = ch_resp.json()
+
+        # Step 2: sign and register
+        iat = int(_time.time())
+        # JCS canonicalization (sorted keys, no whitespace)
+        msg_obj = {
+            "v": "1",
+            "tenant_id": "hackathon-demo",
+            "agent_id": agent_id,
+            "public_key": jwk,
+            "nonce": ch["nonce"],
+            "challenge_id": ch["challenge_id"],
+            "iat": iat,
+        }
+
+        def _canon(obj):
+            if obj is None: return "null"
+            if isinstance(obj, bool): return "true" if obj else "false"
+            if isinstance(obj, int): return str(obj)
+            if isinstance(obj, str): return json.dumps(obj)
+            if isinstance(obj, list): return "[" + ",".join(_canon(i) for i in obj) + "]"
+            if isinstance(obj, dict):
+                return "{" + ",".join(json.dumps(k) + ":" + _canon(obj[k]) for k in sorted(obj.keys())) + "}"
+            raise ValueError(f"Unsupported: {type(obj)}")
+
+        msg_bytes = _canon(msg_obj).encode("utf-8")
+        sig = private_key.sign(msg_bytes)
+        import base64 as _b64
+        sig_b64 = _b64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+
+        resp = await client.post(f"{base}/agents/register", json={
+            "agent_id": agent_id,
+            "public_key": jwk,
+            "proof": {
+                "nonce": ch["nonce"],
+                "challenge_id": ch["challenge_id"],
+                "signature": sig_b64,
+                "iat": iat,
+            },
+        })
         return resp.json()
 
 
