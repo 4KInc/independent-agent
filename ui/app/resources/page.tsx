@@ -124,12 +124,14 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Type</label>
-            <input
+            <label className="text-sm font-medium">Type <span className="text-rose-500">*</span></label>
+            <select
               className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
-              placeholder="e.g., database, api, storage"
               value={resourceType} onChange={e => setResourceType(e.target.value)}
-            />
+            >
+              <option value="">Select a type</option>
+              <option value="db">Database</option>
+            </select>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Owner</label>
@@ -154,7 +156,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} disabled={!idValid || !nameValid || loading}>
+          <Button onClick={handleSubmit} disabled={!idValid || !nameValid || !resourceType || loading}>
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
             Register Resource
           </Button>
@@ -258,7 +260,7 @@ function ResourcesList({ resources, loading, receipts, onRevoke }: {
               <Database className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <code className="font-[var(--font-geist-mono)] font-medium truncate w-48">{res.resource_id}</code>
               <span className="text-muted-foreground truncate flex-1">{res.display_name}</span>
-              {res.resource_type && <Badge variant="outline" className="text-[10px] shrink-0">{res.resource_type}</Badge>}
+              {res.resource_type && <Badge className="text-[10px] shrink-0 bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-600/20">{res.resource_type}</Badge>}
               {count > 0 ? (
                 <Badge className={`text-[10px] shrink-0 ${
                   count >= 50 ? "bg-indigo-600/20 text-indigo-700 dark:text-indigo-400 border-indigo-600/20"
