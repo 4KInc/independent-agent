@@ -23,6 +23,8 @@ function ThemeToggle() {
 const NAV_ITEMS = [
   { href: "/", label: "Demo" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/agents", label: "Agents" },
+  { href: "/resources", label: "Resources" },
   { href: "/integrations", label: "API & Integrations" },
 ];
 

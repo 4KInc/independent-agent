@@ -206,8 +206,8 @@ export default function IntegrationsPage() {
   }, [fetchTools]);
 
   const config = health?.config || {};
-  const mcpUrl = config.gateway_mcp_url || "https://your-gateway-mcp-url/mcp";
-  const restUrl = config.gateway_rest_url || "https://your-gateway-rest-url";
+  const mcpUrl = config.gateway_mcp_url || "https://agent-auth-gateway-mcp-1031148889398.us-central1.run.app/mcp";
+  const restUrl = config.gateway_rest_url || "https://agent-auth-gateway-1031148889398.us-central1.run.app";
 
   const connectionSnippet = `from mcp.client.streamable_http import streamablehttp_client
 from mcp import ClientSession
