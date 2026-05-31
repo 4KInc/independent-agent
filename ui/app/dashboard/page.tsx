@@ -577,7 +577,7 @@ export default function DashboardPage() {
               Demo Mode: {demoMode ? "ON" : "OFF"}
             </button>
           </div>
-          <p className="text-sm text-muted-foreground">Five agents collaborating on AI agent authorization</p>
+          <p className="text-sm text-muted-foreground">Six agents collaborating on AI agent authorization</p>
           <div className="flex items-center gap-4 mt-2">
             {AGENTS.map(a => (
               <div key={a.id} className="flex items-center gap-1.5">
