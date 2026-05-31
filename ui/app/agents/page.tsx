@@ -41,6 +41,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [privateKeyObj, setPrivateKeyObj] = useState<CryptoKey | null>(null);
   const [privateKeyPem, setPrivateKeyPem] = useState("");
   const [keySaved, setKeySaved] = useState(false);
+  const [agentCardUrl, setAgentCardUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
@@ -190,19 +191,23 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       // Step 3: Register with proof
+      const payload: any = {
+        agent_id: agentId,
+        public_key: jwk,
+        proof: {
+          nonce: challenge.nonce,
+          challenge_id: challenge.challenge_id,
+          signature: sigB64,
+          iat: iat,
+        },
+      };
+      if (agentCardUrl.trim()) {
+        payload.agent_card_url = agentCardUrl.trim();
+      }
       const resp = await fetch(`${BASE}/api/agents/gateway/agents/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent_id: agentId,
-          public_key: jwk,
-          proof: {
-            nonce: challenge.nonce,
-            challenge_id: challenge.challenge_id,
-            signature: sigB64,
-            iat: iat,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await resp.json();
@@ -234,6 +239,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   function reset() {
     setAgentId("");
     setPastedKey("");
+    setAgentCardUrl("");
     setGeneratedJwk(null);
     setPrivateKeyObj(null);
     setPrivateKeyPem("");
@@ -265,6 +271,28 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             <div className="flex items-center gap-1.5 text-xs text-emerald-600">
               <CheckCircle2 className="w-3 h-3" />
               Registered with cryptographic proof of possession
+            </div>
+          )}
+          {success.agent_card_verification === "verified" && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+              <CheckCircle2 className="w-3 h-3" />
+              A2A card verified — registered key matches the card
+            </div>
+          )}
+          {success.agent_card_verification === "failed" && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                <AlertTriangle className="w-3 h-3" />
+                A2A card verification failed: {success.agent_card_verification_reason}
+              </div>
+              <p className="text-xs text-muted-foreground ml-5">
+                Registration succeeded (PoP verified). The card verification can be retried later.
+              </p>
+            </div>
+          )}
+          {success.agent_card_verification === "skipped" && agentCardUrl === "" && (
+            <div className="text-xs text-muted-foreground">
+              A2A card verification skipped — no card URL provided.
             </div>
           )}
           <Button variant="outline" size="sm" onClick={reset}>Register another agent</Button>
@@ -369,6 +397,24 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
+        {/* Agent Card URL (optional) */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">
+            Agent Card URL <span className="text-xs text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            type="url"
+            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
+            placeholder="https://your-agent.example.com/.well-known/agent-card.json"
+            value={agentCardUrl}
+            onChange={e => setAgentCardUrl(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            If your agent publishes an A2A card, paste its URL here. The Gateway will verify the
+            public key matches. Leave blank if the agent is not yet deployed.
+          </p>
+        </div>
+
         {/* Error */}
         {error && (
           <div className="rounded-md border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 p-3">
@@ -415,6 +461,7 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
           <tr className="border-b text-left text-muted-foreground">
             <th className="py-2 pr-4 font-medium">Agent ID</th>
             <th className="py-2 pr-4 font-medium">Key ID</th>
+            <th className="py-2 pr-4 font-medium">Card</th>
             <th className="py-2 font-medium">Registered</th>
           </tr>
         </thead>
@@ -436,6 +483,21 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
                     <Copy className="w-3 h-3" />
                   </button>
                 </div>
+              </td>
+              <td className="py-2.5 pr-4">
+                {agent.agent_card_verification === "verified" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600" title={`Card: ${agent.agent_card_url || ""}`}>
+                    <CheckCircle2 className="w-3 h-3" /> Verified
+                  </span>
+                )}
+                {agent.agent_card_verification === "failed" && (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-600" title={agent.agent_card_verification_reason || ""}>
+                    <AlertTriangle className="w-3 h-3" /> Unverified
+                  </span>
+                )}
+                {(!agent.agent_card_verification || agent.agent_card_verification === "skipped") && (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
               </td>
               <td className="py-2.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
