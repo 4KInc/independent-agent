@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Shield, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
+  Shield, ShieldOff, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
   ChevronRight, Copy, ExternalLink, CheckCircle2, XCircle,
   AlertTriangle, Clock, Activity,
 } from "lucide-react";
@@ -33,6 +33,7 @@ const AGENTS: AgentInfo[] = [
   { id: "recommender", name: "Recommender", icon: Brain, type: "AI · Gemini 2.5 Pro", role: "Policy change proposals", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
   { id: "investigator", name: "Investigator", icon: AlertTriangle, type: "AI · Gemini 2.5 Pro", role: "Incident synthesis", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
   { id: "coordinator", name: "Coordinator", icon: Compass, type: "Deterministic + AI", role: "A2A agent directory", badgeColor: "bg-indigo-600/15 text-indigo-700 dark:text-indigo-400 border-indigo-600/20" },
+  { id: "isolator", name: "Isolator", icon: ShieldOff, type: "AI · Gemini 2.5 Pro", role: "Rogue agent quarantine", badgeColor: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20" },
 ];
 
 function StatusDot({ ok }: { ok?: boolean }) {
@@ -87,19 +88,36 @@ function GatewayView() {
   );
 }
 
-function AuditorView() {
+function AuditorView({ pendingAuditId, onAuditIdConsumed }: { pendingAuditId?: string; onAuditIdConsumed?: () => void }) {
   const [reports, setReports] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=200`).then(r => r.json()).then(d => setReports(d.reports || [])).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (!pendingAuditId || reports.length === 0) return;
+    const idx = reports.findIndex(r => r.body?.audit_id === pendingAuditId);
+    if (idx >= 0) {
+      setExpanded(idx);
+      onAuditIdConsumed?.();
+      setTimeout(() => {
+        scrollRef.current?.querySelector(`[data-audit-idx="${idx}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    } else {
+      onAuditIdConsumed?.();
+    }
+  }, [pendingAuditId, reports]);
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={scrollRef}>
       <h3 className="text-sm font-semibold">Audit Reports</h3>
       {reports.length === 0 && <p className="text-sm text-muted-foreground">Auditor runs every 5 minutes. Generate receipts and wait for the next tick.</p>}
       <div className="space-y-1">
         {reports.map((r: any, i: number) => {
           const b = r.body || {};
           return (
-            <div key={i} className="border border-border rounded-lg">
+            <div key={i} data-audit-idx={i} className="border border-border rounded-lg">
               <button onClick={() => setExpanded(expanded === i ? null : i)} className="w-full flex items-center gap-3 text-xs py-2 px-3 text-left cursor-pointer">
                 <span className="text-muted-foreground">seq {b.receipt_seq}</span>
                 <Badge className={b.verdict === "ALIGNED" ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]" : b.verdict === "CONFLICT" ? "bg-rose-600/15 text-rose-600 border-rose-600/20 text-[10px]" : "text-[10px]"} variant="outline">{b.verdict}</Badge>
@@ -127,7 +145,7 @@ function AuditorView() {
   );
 }
 
-function RecommenderView() {
+function RecommenderView({ onNavigateToAudit }: { onNavigateToAudit?: (auditId: string) => void }) {
   const [proposals, setProposals] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   useEffect(() => { fetch(`${BASE}/api/agents/recommender/proposals?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setProposals(d.proposals || [])).catch(() => {}); }, []);
@@ -179,7 +197,11 @@ function RecommenderView() {
                       <div key={j} className="bg-muted/30 rounded p-2 text-xs mb-1">
                         <span className="font-medium">Source: {c.source}</span>{c.page ? `, page ${c.page}` : ""}
                         <p className="text-muted-foreground mt-1 italic">"{c.passage?.slice(0, 200)}..."</p>
-                        <span className="text-[10px] text-muted-foreground">Audit: <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{c.audit_report_id?.slice(0, 12)}</code></span>
+                        <span className="text-[10px] text-muted-foreground">Audit: {c.audit_report_id && onNavigateToAudit ? (
+                          <button onClick={() => onNavigateToAudit(c.audit_report_id)} className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded font-[var(--font-geist-mono)] hover:bg-zinc-300 dark:hover:bg-zinc-700 hover:text-foreground cursor-pointer transition-colors">{c.audit_report_id.slice(0, 12)}</button>
+                        ) : (
+                          <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{c.audit_report_id?.slice(0, 12)}</code>
+                        )}</span>
                       </div>
                     ))}
                   </div>
@@ -189,7 +211,11 @@ function RecommenderView() {
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Trigger Reports</p>
                     <div className="flex flex-wrap gap-1">
                       {trigger.audit_report_ids.map((id: string, j: number) => (
-                        <code key={j} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{id.slice(0, 12)}</code>
+                        onNavigateToAudit ? (
+                          <button key={j} onClick={() => onNavigateToAudit(id)} className="text-[10px] font-[var(--font-geist-mono)] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded hover:bg-zinc-300 dark:hover:bg-zinc-700 hover:text-foreground cursor-pointer transition-colors">{id.slice(0, 12)}</button>
+                        ) : (
+                          <code key={j} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{id.slice(0, 12)}</code>
+                        )
                       ))}
                     </div>
                   </div>
@@ -400,7 +426,7 @@ function ActivityTimeline() {
   const refresh = useCallback(() => { fetch(`${BASE}/api/activity-stream?limit=15`).then(r => r.json()).then(d => setActivities(d.activities || [])).catch(() => {}); }, []);
   useEffect(() => { refresh(); const t = setInterval(refresh, 30000); return () => clearInterval(t); }, [refresh]);
 
-  const agentColors: Record<string, string> = { Gateway: "text-zinc-600", Auditor: "text-teal-600", Recommender: "text-indigo-600", Investigator: "text-amber-600", Coordinator: "text-purple-600" };
+  const agentColors: Record<string, string> = { Gateway: "text-zinc-600", Auditor: "text-teal-600", Recommender: "text-indigo-600", Investigator: "text-amber-600", Coordinator: "text-purple-600", Isolator: "text-rose-600" };
 
   return (
     <div className="space-y-2">
@@ -418,6 +444,53 @@ function ActivityTimeline() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// --- Isolator View ---
+function IsolatorView() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  useEffect(() => { fetch(`${BASE}/api/agents/isolator/isolation-records?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setRecords(d.isolation_records || [])).catch(() => {}); }, []);
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold">Isolation Records</h3>
+      {records.length === 0 && <p className="text-sm text-muted-foreground">No isolation records yet. The Isolator triggers on HIGH/CRITICAL incident reports.</p>}
+      {records.map((rec: any, i: number) => {
+        const b = rec.body || {};
+        const actions = b.actions_taken || [];
+        return (
+          <div key={i} className="border border-border rounded-lg">
+            <button onClick={() => setExpanded(expanded === i ? null : i)} className="w-full flex items-center gap-3 text-xs py-2 px-3 text-left cursor-pointer">
+              <Badge variant={b.severity === "CRITICAL" ? "destructive" : "outline"} className="text-[10px]">{b.severity}</Badge>
+              <span className="font-medium">{b.agent_id}</span>
+              <span className="truncate flex-1 text-muted-foreground">{b.reason?.slice(0, 80)}</span>
+              <Badge variant="outline" className="text-[10px]">{actions.length} actions</Badge>
+              <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform ${expanded === i ? "rotate-90" : ""}`} />
+            </button>
+            {expanded === i && (
+              <div className="px-3 pb-3 space-y-3">
+                {b.reason && <p className="text-xs">{b.reason}</p>}
+                {actions.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Containment Actions</p>
+                    {actions.map((a: any, j: number) => (
+                      <div key={j} className="flex items-start gap-2 text-xs py-1 border-l-2 border-rose-300 dark:border-rose-700 pl-2 mb-1">
+                        <Badge className={a.action === "REVOKE_REGISTRATION" ? "bg-rose-600/15 text-rose-600 text-[9px]" : a.action === "RATE_LIMIT_ZERO" ? "bg-amber-600/15 text-amber-600 text-[9px]" : "text-[9px]"} variant="outline">{a.action}</Badge>
+                        <span className="font-medium">{a.agent_id}</span>
+                        <span className="text-muted-foreground flex-1">{a.rationale?.slice(0, 100)}</span>
+                        <Badge variant="outline" className="text-[9px]">{a.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground">Signed by: {b.isolator_kid} | ID: {b.isolation_id?.slice(0, 12)}</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -446,6 +519,7 @@ export default function DashboardPage() {
   const [agentsHealth, setAgentsHealth] = useState<any>({});
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [selectedAgent, setSelectedAgent] = useState("auditor");
+  const [pendingAuditId, setPendingAuditId] = useState<string | undefined>();
   const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
@@ -473,14 +547,22 @@ export default function DashboardPage() {
     localStorage.setItem("demoMode", String(next));
   };
 
-  const AGENT_VIEWS: Record<string, () => React.ReactElement> = {
-    gateway: GatewayView,
-    auditor: AuditorView,
-    recommender: RecommenderView,
-    investigator: InvestigatorView,
-    coordinator: CoordinatorView,
+  const navigateToAudit = useCallback((auditId: string) => {
+    setPendingAuditId(auditId);
+    setSelectedAgent("auditor");
+  }, []);
+
+  const renderView = () => {
+    switch (selectedAgent) {
+      case "auditor": return <AuditorView pendingAuditId={pendingAuditId} onAuditIdConsumed={() => setPendingAuditId(undefined)} />;
+      case "recommender": return <RecommenderView onNavigateToAudit={navigateToAudit} />;
+      case "gateway": return <GatewayView />;
+      case "investigator": return <InvestigatorView />;
+      case "coordinator": return <CoordinatorView />;
+      case "isolator": return <IsolatorView />;
+      default: return <AuditorView />;
+    }
   };
-  const SelectedView = AGENT_VIEWS[selectedAgent] || AuditorView;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -507,7 +589,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Agent Status Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {AGENTS.map(a => (
             <AgentCard key={a.id} agent={a} health={agentsHealth[a.id]} kid={keys[a.id] || ""} selected={selectedAgent === a.id} onClick={() => setSelectedAgent(a.id)} />
           ))}
@@ -520,7 +602,7 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-medium capitalize">{selectedAgent} Output</CardTitle>
             </CardHeader>
             <CardContent>
-              <SelectedView />
+              {renderView()}
             </CardContent>
           </Card>
           <div className="space-y-4">
