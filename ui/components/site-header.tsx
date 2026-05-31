@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/agents", label: "Agents" },
   { href: "/resources", label: "Resources" },
+  { href: "/actions", label: "Actions" },
   { href: "/integrations", label: "API & Integrations" },
 ];
 
