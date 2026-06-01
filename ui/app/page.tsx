@@ -658,6 +658,90 @@ print("Receipt verified: signature valid, hash matches")`;
   );
 }
 
+// --- Agent Workflow Panel ---
+function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void }) {
+  const [agents, setAgents] = useState<any[]>([]);
+  const [resources, setResources] = useState<any[]>([]);
+  const [actions, setActions] = useState<any[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [selectedResource, setSelectedResource] = useState("");
+  const [events, setEvents] = useState<SSEEvent[]>([]);
+  const [running, setRunning] = useState(false);
+  const [lastFlow, setLastFlow] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`${BASE}/api/agents/gateway/agents`).then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
+    fetch(`${BASE}/api/agents/gateway/resources?limit=100`).then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {});
+    fetch(`${BASE}/api/agents/gateway/actions?limit=100`).then(r => r.json()).then(d => setActions(d.actions || [])).catch(() => {});
+  }, []);
+
+  // Allowed actions from the policy allowlist
+  const allowedActions = ["read", "query", "list", "search", "analyze"];
+  const deniedActions = ["delete", "admin", "execute"];
+
+  const runFlow = useCallback(async (flowType: "authorized" | "unauthorized") => {
+    if (!selectedAgent || !selectedResource) return;
+    const action = flowType === "authorized"
+      ? allowedActions[Math.floor(Math.random() * allowedActions.length)]
+      : deniedActions[Math.floor(Math.random() * deniedActions.length)];
+    setEvents([]); setRunning(true); setLastFlow(flowType);
+    try {
+      await streamSSE("/api/compliant-flow", { action, resource: selectedResource }, ev => setEvents(p => [...p, ev]));
+    } catch {}
+    setRunning(false);
+    onFlowComplete?.();
+  }, [selectedAgent, selectedResource, onFlowComplete]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Select a registered agent and resource, then run an authorized or unauthorized workflow.</p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Agent</label>
+          <Select value={selectedAgent} onValueChange={(v) => v && setSelectedAgent(v)}>
+            <SelectTrigger className="w-52"><SelectValue placeholder="Select agent" /></SelectTrigger>
+            <SelectContent>{agents.map(a => <SelectItem key={a.agent_id} value={a.agent_id}>{a.agent_id}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Resource</label>
+          <Select value={selectedResource} onValueChange={(v) => v && setSelectedResource(v)}>
+            <SelectTrigger className="w-52"><SelectValue placeholder="Select resource" /></SelectTrigger>
+            <SelectContent>{resources.map(r => <SelectItem key={r.resource_id} value={r.resource_id}>{r.resource_id}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => runFlow("authorized")} disabled={running || !selectedAgent || !selectedResource}>
+          {running && lastFlow === "authorized" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Authorized Flow
+        </Button>
+        <Button className="gap-2 bg-rose-600 hover:bg-rose-700 text-white" onClick={() => runFlow("unauthorized")} disabled={running || !selectedAgent || !selectedResource}>
+          {running && lastFlow === "unauthorized" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          <XCircle className="w-3.5 h-3.5" />
+          Unauthorized Flow
+        </Button>
+      </div>
+      {selectedAgent && selectedResource && !running && events.length === 0 && (
+        <div className="text-xs text-muted-foreground border-l-2 border-zinc-200 dark:border-zinc-700 pl-3">
+          <strong>Authorized:</strong> runs a read/query/list action (policy allows these on staging/dev resources).<br/>
+          <strong>Unauthorized:</strong> runs a delete/admin/execute action (policy denies these).
+        </div>
+      )}
+      {events.length > 0 && (
+        <>
+          <div className="flex items-center gap-2">
+            <Badge className={lastFlow === "authorized" ? "bg-emerald-600/15 text-emerald-700 border-emerald-600/20" : "bg-rose-600/15 text-rose-700 border-rose-600/20"}>
+              {lastFlow === "authorized" ? "Authorized Flow" : "Unauthorized Flow"}
+            </Badge>
+          </div>
+          <Separator />
+          <Timeline events={events} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // --- App ---
 export default function Page() {
   const [chainRefreshKey, setChainRefreshKey] = useState(0);
@@ -672,7 +756,8 @@ export default function Page() {
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] min-h-0">
           <aside className="border-r p-4 overflow-y-auto hidden lg:block"><StatusPanel /></aside>
           <main className="p-6 overflow-y-auto">
-            <Tabs defaultValue="compliant"><TabsList><TabsTrigger value="compliant">Compliant Agent</TabsTrigger><TabsTrigger value="rogue">Rogue Agent</TabsTrigger><TabsTrigger value="audit">Audit & Verify</TabsTrigger></TabsList>
+            <Tabs defaultValue="workflow"><TabsList><TabsTrigger value="workflow">Agent Workflow</TabsTrigger><TabsTrigger value="compliant">Compliant Agent</TabsTrigger><TabsTrigger value="rogue">Rogue Agent</TabsTrigger><TabsTrigger value="audit">Audit & Verify</TabsTrigger></TabsList>
+              <TabsContent value="workflow" className="mt-4"><AgentWorkflowPanel onFlowComplete={triggerChainRefresh} /></TabsContent>
               <TabsContent value="compliant" className="mt-4"><CompliantPanel onFlowComplete={triggerChainRefresh} /></TabsContent>
               <TabsContent value="rogue" className="mt-4"><RoguePanel onAttackComplete={triggerChainRefresh} /></TabsContent>
               <TabsContent value="audit" className="mt-4"><AuditPanel onChainChange={triggerChainRefresh} /></TabsContent>
