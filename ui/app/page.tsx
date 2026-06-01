@@ -756,9 +756,8 @@ export default function Page() {
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] min-h-0">
           <aside className="border-r p-4 overflow-y-auto hidden lg:block"><StatusPanel /></aside>
           <main className="p-6 overflow-y-auto">
-            <Tabs defaultValue="workflow"><TabsList><TabsTrigger value="workflow">Agent Workflow</TabsTrigger><TabsTrigger value="compliant">Compliant Agent</TabsTrigger><TabsTrigger value="rogue">Rogue Agent</TabsTrigger><TabsTrigger value="audit">Audit & Verify</TabsTrigger></TabsList>
+            <Tabs defaultValue="workflow"><TabsList><TabsTrigger value="workflow">Agent Workflow</TabsTrigger><TabsTrigger value="rogue">Rogue Agent</TabsTrigger><TabsTrigger value="audit">Audit & Verify</TabsTrigger></TabsList>
               <TabsContent value="workflow" className="mt-4"><AgentWorkflowPanel onFlowComplete={triggerChainRefresh} /></TabsContent>
-              <TabsContent value="compliant" className="mt-4"><CompliantPanel onFlowComplete={triggerChainRefresh} /></TabsContent>
               <TabsContent value="rogue" className="mt-4"><RoguePanel onAttackComplete={triggerChainRefresh} /></TabsContent>
               <TabsContent value="audit" className="mt-4"><AuditPanel onChainChange={triggerChainRefresh} /></TabsContent>
             </Tabs>
