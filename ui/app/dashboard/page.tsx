@@ -30,10 +30,10 @@ type AgentInfo = { id: string; name: string; icon: any; type: string; role: stri
 const AGENTS: AgentInfo[] = [
   { id: "gateway", name: "Gateway", icon: Shield, type: "Deterministic", role: "Authorization chokepoint", badgeColor: "bg-zinc-600/15 text-zinc-700 dark:text-zinc-300 border-zinc-600/20" },
   { id: "auditor", name: "Auditor", icon: Eye, type: "AI · Gemini 2.5 Pro", role: "Compliance audit pipeline", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
-  { id: "recommender", name: "Recommender", icon: Brain, type: "AI · Gemini 2.5 Pro", role: "Policy change proposals", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
   { id: "investigator", name: "Investigator", icon: AlertTriangle, type: "AI · Gemini 2.5 Pro", role: "Incident synthesis", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
-  { id: "coordinator", name: "Coordinator", icon: Compass, type: "Deterministic + AI", role: "A2A agent directory", badgeColor: "bg-indigo-600/15 text-indigo-700 dark:text-indigo-400 border-indigo-600/20" },
   { id: "isolator", name: "Isolator", icon: ShieldOff, type: "AI · Gemini 2.5 Pro", role: "Rogue agent quarantine", badgeColor: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20" },
+  { id: "recommender", name: "Recommender", icon: Brain, type: "AI · Gemini 2.5 Pro", role: "Policy change proposals", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
+  { id: "coordinator", name: "Coordinator", icon: Compass, type: "Deterministic + AI", role: "A2A agent directory", badgeColor: "bg-indigo-600/15 text-indigo-700 dark:text-indigo-400 border-indigo-600/20" },
 ];
 
 function StatusDot({ ok }: { ok?: boolean }) {
