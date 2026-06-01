@@ -524,6 +524,37 @@ function SigningKeysSidebar({ keys }: { keys: Record<string, string> }) {
 }
 
 // --- Main Dashboard ---
+function TriggerAuditButton() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<string>("");
+
+  async function trigger() {
+    setRunning(true); setResult("");
+    try {
+      const r = await fetch(`${BASE}/api/agents/auditor/audit-tick`, { method: "POST" });
+      const d = await r.json();
+      const audited = d.audited || 0;
+      const conflicts = d.by_verdict?.CONFLICT || 0;
+      setResult(`${audited} audited${conflicts > 0 ? `, ${conflicts} CONFLICT` : ""}`);
+      setTimeout(() => setResult(""), 5000);
+    } catch {
+      setResult("failed");
+      setTimeout(() => setResult(""), 3000);
+    }
+    setRunning(false);
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {result && <span className="text-xs text-emerald-600">{result}</span>}
+      <Button variant="outline" size="sm" onClick={trigger} disabled={running} className="gap-1.5 text-xs h-7">
+        {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+        {running ? "Auditing..." : "Trigger Audit"}
+      </Button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [agentsHealth, setAgentsHealth] = useState<any>({});
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -569,6 +600,7 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">Multi-Agent Operations</h1>
+            <TriggerAuditButton />
           </div>
           <p className="text-sm text-muted-foreground">Six agents collaborating on AI agent authorization</p>
           <div className="flex items-center gap-4 mt-2">
