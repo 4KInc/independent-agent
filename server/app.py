@@ -52,7 +52,7 @@ ISOLATOR_URL = os.environ.get("ISOLATOR_URL", "https://agent-auth-isolator-10311
 
 # --- Rate limiting (in-memory, per IP) ---
 _rate_buckets: dict[str, collections.deque] = {}
-RATE_LIMIT = 10  # requests per minute
+RATE_LIMIT = 60  # requests per minute
 RATE_WINDOW = 60  # seconds
 
 # --- Action allowlist ---
