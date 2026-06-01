@@ -529,12 +529,6 @@ export default function DashboardPage() {
   const [keys, setKeys] = useState<Record<string, string>>({});
   const [selectedAgent, setSelectedAgent] = useState("auditor");
   const [pendingAuditId, setPendingAuditId] = useState<string | undefined>();
-  const [demoMode, setDemoMode] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("demoMode");
-    if (stored === "true") setDemoMode(true);
-  }, []);
 
   const fetchHealth = useCallback(() => {
     fetch(`${BASE}/api/agents-health`).then(r => r.json()).then(d => {
@@ -545,16 +539,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchHealth();
-    const interval = demoMode ? 10000 : 30000;
-    const t = setInterval(fetchHealth, interval);
+    const t = setInterval(fetchHealth, 15000);
     return () => clearInterval(t);
-  }, [fetchHealth, demoMode]);
-
-  const toggleDemo = () => {
-    const next = !demoMode;
-    setDemoMode(next);
-    localStorage.setItem("demoMode", String(next));
-  };
+  }, [fetchHealth]);
 
   const navigateToAudit = useCallback((auditId: string) => {
     setPendingAuditId(auditId);
@@ -582,9 +569,6 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">Multi-Agent Operations</h1>
-            <button onClick={toggleDemo} className={`text-[10px] px-2 py-0.5 rounded-full border cursor-pointer transition-colors ${demoMode ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20" : "text-muted-foreground border-zinc-200 dark:border-zinc-700"}`}>
-              Demo Mode: {demoMode ? "ON" : "OFF"}
-            </button>
           </div>
           <p className="text-sm text-muted-foreground">Six agents collaborating on AI agent authorization</p>
           <div className="flex items-center gap-4 mt-2">
