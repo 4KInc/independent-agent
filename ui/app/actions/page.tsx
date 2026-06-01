@@ -32,8 +32,22 @@ const RISK_STYLES: Record<string, string> = {
 
 // ─── Register Form ──────────────────────────────────────────────────
 
+const ACTION_TYPES = [
+  { value: "read", label: "Read", risk: "low", description: "Read-only access to a resource", approval: false },
+  { value: "query", label: "Query", risk: "low", description: "Query a resource (database query). Read-only.", approval: false },
+  { value: "list", label: "List", risk: "low", description: "Enumerate items in a resource collection.", approval: false },
+  { value: "search", label: "Search", risk: "low", description: "Search across resource collections.", approval: false },
+  { value: "analyze", label: "Analyze", risk: "low", description: "Run analysis on resource data. Read-only.", approval: false },
+  { value: "write", label: "Write", risk: "medium", description: "Write or update data in a resource.", approval: false },
+  { value: "create", label: "Create", risk: "medium", description: "Create new objects in a resource.", approval: false },
+  { value: "update", label: "Update", risk: "medium", description: "Modify existing objects.", approval: false },
+  { value: "delete", label: "Delete", risk: "high", description: "Destructive: removes data. Irreversible.", approval: true },
+  { value: "execute", label: "Execute", risk: "high", description: "Run code or trigger an operation. Side effects.", approval: true },
+  { value: "admin", label: "Admin", risk: "critical", description: "Administrative access — policy changes, key rotation.", approval: true },
+];
+
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
-  const [actionId, setActionId] = useState("");
+  const [actionType, setActionType] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [riskLevel, setRiskLevel] = useState("");
@@ -43,9 +57,23 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
 
-  const idPattern = /^[a-zA-Z0-9._\/-]{1,256}$/;
-  const idValid = idPattern.test(actionId);
+  const typeValid = actionType.length > 0;
   const nameValid = displayName.trim().length > 0;
+
+  // Auto-generate action_id from type
+  const actionId = actionType;
+
+  // Auto-fill fields when action type changes
+  function handleActionTypeChange(value: string) {
+    setActionType(value);
+    const preset = ACTION_TYPES.find(a => a.value === value);
+    if (preset) {
+      setDisplayName(preset.label);
+      setDescription(preset.description);
+      setRiskLevel(preset.risk);
+      setHumanApproval(preset.approval);
+    }
+  }
 
   async function handleSubmit() {
     setError(""); setLoading(true);
@@ -70,7 +98,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   function reset() {
-    setActionId(""); setDisplayName(""); setDescription("");
+    setActionType(""); setDisplayName(""); setDescription("");
     setRiskLevel(""); setResourceType("db"); setHumanApproval(false); setSuccess(null); setError("");
   }
 
@@ -107,18 +135,16 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Action ID <span className="text-rose-500">*</span></label>
-            <input className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
-              placeholder="e.g., read, delete, execute"
-              value={actionId} onChange={e => setActionId(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Display Name <span className="text-rose-500">*</span></label>
-            <input className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
-              placeholder="e.g., Read, Delete All"
-              value={displayName} onChange={e => setDisplayName(e.target.value)} />
+            <label className="text-sm font-medium">Action Type <span className="text-rose-500">*</span></label>
+            <select className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
+              value={actionType} onChange={e => handleActionTypeChange(e.target.value)}>
+              <option value="">Select action type</option>
+              {ACTION_TYPES.map(a => (
+                <option key={a.value} value={a.value}>{a.label} — {a.description.slice(0, 40)}</option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Risk Level <span className="text-rose-500">*</span></label>
@@ -139,6 +165,16 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             </select>
           </div>
         </div>
+        {actionType && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Action ID:</span>
+            <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded">{actionId}</code>
+            <span>·</span>
+            <span>Display Name:</span>
+            <input className="text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-2 py-0.5 w-40"
+              value={displayName} onChange={e => setDisplayName(e.target.value)} />
+          </div>
+        )}
         <div>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={humanApproval} onChange={e => setHumanApproval(e.target.checked)}
@@ -154,7 +190,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
         {error && <div className="rounded-md border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 p-3"><p className="text-sm text-rose-700 dark:text-rose-400">{error}</p></div>}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} disabled={!idValid || !nameValid || !riskLevel || loading}>
+          <Button onClick={handleSubmit} disabled={!typeValid || !nameValid || !riskLevel || loading}>
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
             Register Action
           </Button>
