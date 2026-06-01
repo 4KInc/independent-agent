@@ -747,6 +747,65 @@ async def proxy_agent_post(agent_name: str, path: str, request: Request):
             return {"error": type(e).__name__, "detail": str(e)[:200]}
 
 
+@app.put("/api/agents/{agent_name}/{path:path}")
+async def proxy_agent_put(agent_name: str, path: str, request: Request):
+    """Proxy PUT requests to the multi-agent services."""
+    _check_rate_limit(_get_ip(request))
+    base = _AGENT_URLS.get(agent_name)
+    if not base:
+        raise HTTPException(404, f"Unknown agent: {agent_name}")
+    url = f"{base}/{path}"
+    body = await request.json()
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.put(url, json=body)
+            try:
+                return resp.json()
+            except Exception:
+                return {"raw": resp.text[:500], "status": resp.status_code}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)[:200]}
+
+
+@app.delete("/api/agents/{agent_name}/{path:path}")
+async def proxy_agent_delete(agent_name: str, path: str, request: Request):
+    """Proxy DELETE requests to the multi-agent services."""
+    _check_rate_limit(_get_ip(request))
+    base = _AGENT_URLS.get(agent_name)
+    if not base:
+        raise HTTPException(404, f"Unknown agent: {agent_name}")
+    url = f"{base}/{path}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.delete(url)
+            try:
+                return resp.json()
+            except Exception:
+                return {"raw": resp.text[:500], "status": resp.status_code}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)[:200]}
+
+
+@app.patch("/api/agents/{agent_name}/{path:path}")
+async def proxy_agent_patch(agent_name: str, path: str, request: Request):
+    """Proxy PATCH requests to the multi-agent services."""
+    _check_rate_limit(_get_ip(request))
+    base = _AGENT_URLS.get(agent_name)
+    if not base:
+        raise HTTPException(404, f"Unknown agent: {agent_name}")
+    url = f"{base}/{path}"
+    body = await request.json()
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.patch(url, json=body)
+            try:
+                return resp.json()
+            except Exception:
+                return {"raw": resp.text[:500], "status": resp.status_code}
+        except Exception as e:
+            return {"error": type(e).__name__, "detail": str(e)[:200]}
+
+
 @app.get("/api/agents-health")
 async def agents_health():
     """Health check all five agents."""
