@@ -669,11 +669,55 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
   const [running, setRunning] = useState(false);
   const [lastFlow, setLastFlow] = useState<string>("");
 
-  useEffect(() => {
+  // Spin Up AI Agent state
+  const [spinUpLoading, setSpinUpLoading] = useState(false);
+  const [demoAgent, setDemoAgent] = useState<any>(null);
+  const [spinUpError, setSpinUpError] = useState("");
+
+  const DEMO_AGENT_BASE = `${BASE}/api/agents/demo-agent`;
+
+  const refreshRegistries = useCallback(() => {
     fetch(`${BASE}/api/agents/gateway/agents`).then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
     fetch(`${BASE}/api/agents/gateway/resources?limit=100`).then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {});
     fetch(`${BASE}/api/agents/gateway/actions?limit=100`).then(r => r.json()).then(d => setActions(d.actions || [])).catch(() => {});
   }, []);
+
+  useEffect(() => { refreshRegistries(); }, [refreshRegistries]);
+
+  const spinUpAgent = useCallback(async () => {
+    setSpinUpLoading(true); setSpinUpError(""); setDemoAgent(null);
+    try {
+      // Check health first
+      const health = await fetch(`${DEMO_AGENT_BASE}/health`).then(r => r.json());
+      if (!health.ok) throw new Error("Agent not reachable");
+
+      // Get the agent card
+      const card = await fetch(`${DEMO_AGENT_BASE}/.well-known/agent-card.json`).then(r => r.json());
+
+      // Self-register with the Gateway (PoP + card verification)
+      const reg = await fetch(`${DEMO_AGENT_BASE}/self-register`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      }).then(r => r.json());
+
+      setDemoAgent({
+        name: card.name || health.agent,
+        agent_id: reg.agent_id || health.agent,
+        kid: reg.kid,
+        card_url: card.url ? `${card.url}/.well-known/agent-card.json` : `${DEMO_AGENT_BASE}/.well-known/agent-card.json`,
+        live_challenge_url: card.url ? `${card.url}/live-challenge` : `${DEMO_AGENT_BASE}/live-challenge`,
+        card_verification: reg.agent_card_verification,
+        live_verification: reg.live_challenge_verification,
+        pop: reg.proof_of_possession_at_registration,
+      });
+
+      // Auto-select the agent and refresh registries
+      setSelectedAgent(reg.agent_id || health.agent);
+      setTimeout(refreshRegistries, 500);
+    } catch (e: any) {
+      setSpinUpError(e.message || "Failed to spin up agent");
+    }
+    setSpinUpLoading(false);
+  }, [DEMO_AGENT_BASE, refreshRegistries]);
 
   // Allowed actions from the policy allowlist
   const allowedActions = ["read", "query", "list", "search", "analyze"];
@@ -694,7 +738,59 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Select a registered agent and resource, then run an authorized or unauthorized workflow.</p>
+      {/* Step 1: Spin Up AI Agent */}
+      <Card className={demoAgent ? "border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/10" : ""}>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Step 1: Spin Up AI Agent</h3>
+              <p className="text-xs text-muted-foreground">Launch a real AI agent on Cloud Run with its own Ed25519 identity and A2A card.</p>
+            </div>
+            {!demoAgent && (
+              <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2" onClick={spinUpAgent} disabled={spinUpLoading}>
+                {spinUpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5" />}
+                {spinUpLoading ? "Spinning up..." : "Spin Up Agent"}
+              </Button>
+            )}
+          </div>
+          {spinUpError && <p className="text-xs text-rose-600">{spinUpError}</p>}
+          {demoAgent && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{demoAgent.name} — registered with PoP</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                <div className="space-y-1">
+                  <span className="text-muted-foreground">Agent Card URL</span>
+                  <div className="flex items-center gap-1">
+                    <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-[10px] truncate flex-1">{demoAgent.card_url}</code>
+                    <Badge className={demoAgent.card_verification === "verified" ? "bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]" : "text-[9px]"} variant="outline">{demoAgent.card_verification || "—"}</Badge>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-muted-foreground">Live Challenge URL</span>
+                  <div className="flex items-center gap-1">
+                    <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-[10px] truncate flex-1">{demoAgent.live_challenge_url}</code>
+                    <Badge className={demoAgent.live_verification === "verified" ? "bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]" : "text-[9px]"} variant="outline">{demoAgent.live_verification || "—"}</Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span>kid: <code className="font-[var(--font-geist-mono)]">{demoAgent.kid}</code></span>
+                <span>PoP: <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]">verified</Badge></span>
+              </div>
+              <p className="text-xs text-muted-foreground">Now register a policy binding on the <a href="/policies" className="text-teal-600 hover:underline">Policies page</a>, then come back and select this agent below.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Step 2: Run Workflow */}
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold">Step 2: Run Workflow</h3>
+        <Button variant="ghost" size="sm" onClick={refreshRegistries} className="h-6 w-6 p-0"><RefreshCw className="w-3 h-3" /></Button>
+      </div>
       <div className="flex items-end gap-3 flex-wrap">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Agent</label>
