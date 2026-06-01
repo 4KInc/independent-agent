@@ -452,7 +452,16 @@ function ActivityTimeline() {
 function IsolatorView() {
   const [records, setRecords] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
-  useEffect(() => { fetch(`${BASE}/api/agents/isolator/isolation-records?tenant=hackathon-demo&limit=25`).then(r => r.json()).then(d => setRecords(d.isolation_records || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    Promise.all([
+      fetch(`${BASE}/api/agents/isolator/isolation-records?tenant=hackathon-demo&limit=25`).then(r => r.json()).catch(() => ({ isolation_records: [] })),
+      fetch(`${BASE}/api/agents/isolator/isolation-records?tenant=default&limit=25`).then(r => r.json()).catch(() => ({ isolation_records: [] })),
+    ]).then(([a, b]) => {
+      const all = [...(a.isolation_records || []), ...(b.isolation_records || [])];
+      all.sort((x: any, y: any) => (y.body?.isolated_at || "").localeCompare(x.body?.isolated_at || ""));
+      setRecords(all.slice(0, 25));
+    });
+  }, []);
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">Isolation Records</h3>
