@@ -61,6 +61,16 @@ function StatusDot({ ok }: { ok?: boolean }) {
 
 function copyText(t: string) { navigator.clipboard.writeText(t); }
 
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button onClick={() => { copyText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer shrink-0">
+      {copied ? <><CheckCircle2 className="w-3 h-3 text-emerald-600" /><span className="text-[10px] text-emerald-600">Copied</span></> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
+
 function timeAgo(ts: string) {
   const d = (Date.now() - new Date(ts).getTime()) / 1000;
   if (d < 60) return `${Math.round(d)}s ago`;
@@ -765,7 +775,7 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
                   <span className="text-muted-foreground">Agent Card URL</span>
                   <div className="flex items-center gap-1">
                     <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-[10px] truncate flex-1">{demoAgent.card_url}</code>
-                    <button onClick={() => copyText(demoAgent.card_url)} className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><Copy className="w-3 h-3" /></button>
+                    <CopyBtn text={demoAgent.card_url} />
                     <Badge className={demoAgent.card_verification === "verified" ? "bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]" : "text-[9px]"} variant="outline">{demoAgent.card_verification || "—"}</Badge>
                   </div>
                 </div>
@@ -773,16 +783,16 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
                   <span className="text-muted-foreground">Live Challenge URL</span>
                   <div className="flex items-center gap-1">
                     <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-[10px] truncate flex-1">{demoAgent.live_challenge_url}</code>
-                    <button onClick={() => copyText(demoAgent.live_challenge_url)} className="text-muted-foreground hover:text-foreground cursor-pointer shrink-0"><Copy className="w-3 h-3" /></button>
+                    <CopyBtn text={demoAgent.live_challenge_url} />
                     <Badge className={demoAgent.live_verification === "verified" ? "bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]" : "text-[9px]"} variant="outline">{demoAgent.live_verification || "—"}</Badge>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                 <span>kid: <code className="font-[var(--font-geist-mono)]">{demoAgent.kid}</code></span>
-                <button onClick={() => copyText(demoAgent.kid)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Copy className="w-2.5 h-2.5" /></button>
+                <CopyBtn text={demoAgent.kid} />
                 <span>Agent ID: <code className="font-[var(--font-geist-mono)]">{demoAgent.agent_id}</code></span>
-                <button onClick={() => copyText(demoAgent.agent_id)} className="text-muted-foreground hover:text-foreground cursor-pointer"><Copy className="w-2.5 h-2.5" /></button>
+                <CopyBtn text={demoAgent.agent_id} />
                 <span>PoP: <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]">verified</Badge></span>
               </div>
               <p className="text-xs text-muted-foreground">Now register a policy binding on the <a href="/policies" className="text-teal-600 hover:underline">Policies page</a>, then come back and select this agent below.</p>
