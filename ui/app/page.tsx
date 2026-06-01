@@ -739,9 +739,39 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
       ? allowedActions[Math.floor(Math.random() * allowedActions.length)]
       : deniedActions[Math.floor(Math.random() * deniedActions.length)];
     setEvents([]); setRunning(true); setLastFlow(flowType);
-    try {
-      await streamSSE("/api/compliant-flow", { action, resource: selectedResource }, ev => setEvents(p => [...p, ev]));
-    } catch {}
+
+    // If the selected agent is the demo-agent, call its /attack-resource endpoint
+    // which uses the demo-agent's own registered key for DPoP
+    if (selectedAgent === "demo-acme-analytics-agent") {
+      try {
+        setEvents(p => [...p, { step: "call_gateway", data: { agent: selectedAgent, action, resource: selectedResource, method: "demo-agent /attack-resource" }, ts: Date.now() / 1000 }]);
+        const resp = await fetch(`${BASE}/api/agents/demo-agent/attack-resource`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, resource: selectedResource }),
+        });
+        const result = await resp.json();
+        const decision = result.decision || result.gateway_response?.decision || "unknown";
+        const reasons = result.reason_codes || result.gateway_response?.reason_codes || [];
+        setEvents(p => [...p, {
+          step: "gateway_response",
+          data: { decision, reason_codes: reasons, agent: selectedAgent, action, resource: selectedResource, ...result },
+          ts: Date.now() / 1000,
+        }]);
+        setEvents(p => [...p, {
+          step: "done",
+          data: { decision, blocked: decision === "deny", code: reasons[0] || decision },
+          ts: Date.now() / 1000,
+        }]);
+      } catch (e: any) {
+        setEvents(p => [...p, { step: "error", data: { message: e.message }, ts: Date.now() / 1000 }]);
+      }
+    } else {
+      // Fallback: use the UI backend's compliant-flow for other agents
+      try {
+        await streamSSE("/api/compliant-flow", { action, resource: selectedResource }, ev => setEvents(p => [...p, ev]));
+      } catch {}
+    }
     setRunning(false);
     onFlowComplete?.();
   }, [selectedAgent, selectedResource, onFlowComplete]);
