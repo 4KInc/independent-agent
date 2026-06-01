@@ -795,7 +795,15 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
                 <CopyBtn text={demoAgent.agent_id} />
                 <span>PoP: <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]">verified</Badge></span>
               </div>
-              <p className="text-xs text-muted-foreground">Now register a policy binding on the <a href="/policies" className="text-teal-600 hover:underline">Policies page</a>, then come back and select this agent below.</p>
+              <div className="rounded-md border border-teal-500/30 bg-teal-50/50 dark:bg-teal-950/10 p-2 text-xs">
+                <p className="font-medium text-teal-700 dark:text-teal-400">Agent is already registered. Next steps:</p>
+                <ol className="list-decimal list-inside mt-1 space-y-0.5 text-muted-foreground">
+                  <li>Go to <a href="/policies" className="text-teal-600 hover:underline font-medium">Policies</a> and create a binding: <strong>{demoAgent.agent_id}</strong> can <strong>read</strong> on a resource</li>
+                  <li>Come back here, select <strong>{demoAgent.agent_id}</strong> in the Agent dropdown below</li>
+                  <li>Click <strong>Authorized Flow</strong> or <strong>Unauthorized Flow</strong></li>
+                </ol>
+                <p className="mt-1 text-muted-foreground">Do NOT re-register this agent on the Agents page — it's already registered with its own server-side key.</p>
+              </div>
             </div>
           )}
         </CardContent>
