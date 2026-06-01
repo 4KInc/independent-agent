@@ -133,7 +133,7 @@ function BindingForm({ agents, resources, actions, onSuccess }: {
             <p className="text-sm text-emerald-700 dark:text-emerald-400">Binding created successfully</p>
           </div>
         )}
-        <Button onClick={handleSubmit} disabled={!canSubmit}>
+        <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSubmit} disabled={!canSubmit}>
           {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
           Create Binding
         </Button>
@@ -191,22 +191,34 @@ function PolicyView({ policy, onRefresh, onDeleteBinding }: {
         </CardContent>
       </Card>
 
-      {/* Other rules */}
+      {/* Other rules — human readable */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">System Rules</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {otherRules.map((r: any) => (
-              <div key={r.id} className="flex items-center gap-3 text-xs py-2 px-3 border rounded-lg">
-                <Badge variant="outline" className="text-[10px]">{r.type}</Badge>
-                <code className="font-[var(--font-geist-mono)] text-muted-foreground flex-1 truncate">{JSON.stringify(r.config).slice(0, 100)}</code>
+        <CardContent className="space-y-3">
+          {otherRules.map((r: any) => {
+            const c = r.config || {};
+            let description = "";
+            if (r.type === "allowlist") {
+              description = `Allowed actions: ${(c.allowed_actions || []).join(", ")}`;
+            } else if (r.type === "resource_scope") {
+              description = `Allowed: ${(c.allowed_resources || []).join(", ")} | Denied: ${(c.denied_resources || []).join(", ")}`;
+            } else if (r.type === "rate_limit") {
+              description = `Max ${c.max_actions} actions per ${c.window_seconds}s window`;
+            } else {
+              description = JSON.stringify(c).slice(0, 80);
+            }
+            return (
+              <div key={r.id} className="flex items-start gap-3 text-sm py-2 px-3 border rounded-lg">
+                <Badge variant="outline" className="text-[10px] shrink-0 mt-0.5">{r.type}</Badge>
+                <span className="text-muted-foreground">{description}</span>
               </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">
+            );
+          })}
+          <p className="text-xs text-muted-foreground pt-2 border-t">
             Policy hash: <code className="font-[var(--font-geist-mono)]">{policy?.policy_hash?.slice(0, 24)}...</code>
+            {policy?.require_resource_registration && <span className="ml-2">| Resource registration required</span>}
           </p>
         </CardContent>
       </Card>
@@ -272,6 +284,26 @@ export default function PoliciesPage() {
           </div>
         ) : (
           <>
+            {/* Stats summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="border rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-purple-600">{agents.length}</div>
+                <div className="text-xs text-muted-foreground">Agents</div>
+              </div>
+              <div className="border rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-amber-600">{actions.length}</div>
+                <div className="text-xs text-muted-foreground">Actions</div>
+              </div>
+              <div className="border rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-blue-600">{resources.length}</div>
+                <div className="text-xs text-muted-foreground">Resources</div>
+              </div>
+              <div className="border rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-emerald-600">{(policy?.rules || []).filter((r: any) => r.type === "agent_binding").length}</div>
+                <div className="text-xs text-muted-foreground">Bindings</div>
+              </div>
+            </div>
+
             <BindingForm agents={agents} resources={resources} actions={actions} onSuccess={fetchAll} />
             <PolicyView policy={policy} onRefresh={fetchAll} onDeleteBinding={handleDeleteBinding} />
           </>

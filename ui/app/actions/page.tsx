@@ -190,7 +190,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
         {error && <div className="rounded-md border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 p-3"><p className="text-sm text-rose-700 dark:text-rose-400">{error}</p></div>}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} disabled={!typeValid || !nameValid || !riskLevel || loading}>
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSubmit} disabled={!typeValid || !nameValid || !riskLevel || loading}>
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
             Register Action
           </Button>

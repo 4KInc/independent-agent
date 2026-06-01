@@ -417,40 +417,28 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        {/* Agent Card URL (optional) */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">
-            Agent Card URL <span className="text-xs text-muted-foreground">(optional)</span>
-          </label>
-          <input
-            type="url"
-            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
-            placeholder="https://your-agent.example.com/.well-known/agent-card.json"
-            value={agentCardUrl}
-            onChange={e => setAgentCardUrl(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            If your agent publishes an A2A card, paste its URL here. The Gateway will verify the
-            public key matches. Leave blank if the agent is not yet deployed.
-          </p>
-        </div>
-
-        {/* Live Challenge URL (optional) */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">
-            Live Challenge URL <span className="text-xs text-muted-foreground">(optional)</span>
-          </label>
-          <input
-            type="url"
-            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
-            placeholder="https://your-agent.example.com/live-challenge"
-            value={liveChallengeUrl}
-            onChange={e => setLiveChallengeUrl(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            If your agent accepts signed challenges, the Gateway will POST a fresh nonce and verify
-            the response. Proves the agent is reachable AND controls the private key right now.
-          </p>
+        {/* Verification URLs (optional, side by side) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">
+              Agent Card URL <span className="text-xs text-muted-foreground">(optional)</span>
+            </label>
+            <input type="url"
+              className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)] text-xs"
+              placeholder="https://agent.example.com/.well-known/agent-card.json"
+              value={agentCardUrl} onChange={e => setAgentCardUrl(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Gateway verifies the public key matches.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">
+              Live Challenge URL <span className="text-xs text-muted-foreground">(optional)</span>
+            </label>
+            <input type="url"
+              className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)] text-xs"
+              placeholder="https://agent.example.com/live-challenge"
+              value={liveChallengeUrl} onChange={e => setLiveChallengeUrl(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Proves the agent is reachable and controls the key.</p>
+          </div>
         </div>
 
         {/* Error */}
@@ -462,7 +450,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
 
         {/* Submit */}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSubmit} disabled={!canSubmit}>
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
             Register Agent
           </Button>

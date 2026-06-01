@@ -104,7 +104,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Resource Name <span className="text-rose-500">*</span></label>
             <input
@@ -113,7 +113,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               value={displayName} onChange={e => setDisplayName(e.target.value)}
             />
             {resourceId && (
-              <p className="text-xs text-muted-foreground">Resource ID: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{resourceId}</code> (auto-generated)</p>
+              <p className="text-xs text-muted-foreground">ID: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-[10px]">{resourceId}</code></p>
             )}
           </div>
           <div className="space-y-1.5">
@@ -149,7 +149,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} disabled={!idValid || !nameValid || !resourceType || loading}>
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSubmit} disabled={!idValid || !nameValid || !resourceType || loading}>
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
             Register Resource
           </Button>
