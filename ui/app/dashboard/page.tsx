@@ -92,7 +92,24 @@ function AuditorView({ pendingAuditId, onAuditIdConsumed }: { pendingAuditId?: s
   const [reports, setReports] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=200`).then(r => r.json()).then(d => setReports(d.reports || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=200`)
+      .then(r => r.json())
+      .then(d => {
+        const all = d.reports || [];
+        // Deduplicate by receipt_seq — keep only the latest audit per seq
+        const bySeq = new Map<number, any>();
+        for (const r of all) {
+          const seq = r.body?.receipt_seq;
+          const existing = bySeq.get(seq);
+          if (!existing || (r.body?.audited_at || "") > (existing.body?.audited_at || "")) {
+            bySeq.set(seq, r);
+          }
+        }
+        setReports(Array.from(bySeq.values()));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!pendingAuditId || reports.length === 0) return;
@@ -523,6 +540,182 @@ function SigningKeysSidebar({ keys }: { keys: Record<string, string> }) {
   );
 }
 
+// --- Pipeline Simulation ---
+function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
+  // 0=idle, 1=spawning rogue, 2=rogue burst, 3=auditing, 4=investigating, 5=isolating, 6=recommending, 7=done
+  const [step, setStep] = useState(0);
+  const [results, setResults] = useState<Record<string, any>>({});
+  const [error, setError] = useState("");
+  const [rogueAgent, setRogueAgent] = useState("");
+
+  async function runPipeline() {
+    setStep(1); setResults({}); setError(""); setRogueAgent("");
+
+    try {
+      // Step 1: Spawn a rogue agent
+      const spawnResp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
+      if (!spawnResp.ok) throw new Error("Failed to spawn agent");
+      const spawned = await spawnResp.json();
+      const agentId = spawned.agent_id;
+      setRogueAgent(agentId);
+      setResults(prev => ({ ...prev, spawn: spawned }));
+
+      // Step 2: Rogue burst — 4 rapid unauthorized actions (delete, admin, execute, drop)
+      setStep(2);
+      const rogueActions = ["delete", "admin", "execute", "drop"];
+      const burstResults: any[] = [];
+      for (const action of rogueActions) {
+        const r = await fetch(`${BASE}/api/agents/demo-agent/attack-resource`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agent_id: agentId, action, resource: "staging-analytics-db" }),
+        });
+        burstResults.push(await r.json());
+      }
+      setResults(prev => ({ ...prev, rogue: { actions: rogueActions, denials: burstResults.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: burstResults.length } }));
+
+      // Step 3: Trigger Auditor to process the rogue receipts
+      setStep(3);
+      const auditResp = await fetch(`${BASE}/api/agents/auditor/audit-tick`, { method: "POST" });
+      const auditData = await auditResp.json();
+      setResults(prev => ({ ...prev, auditor: auditData }));
+
+      // Step 4: Trigger Investigation on the rogue agent
+      setStep(4);
+      const invResp = await fetch(`${BASE}/api/agents/investigator/investigate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } }),
+      });
+      const invData = await invResp.json();
+      if (invData.error) { setError(`Investigator: ${invData.error}`); setStep(0); return; }
+      setResults(prev => ({ ...prev, investigator: invData }));
+
+      const severity = invData.incident?.severity || invData.severity || "INFO";
+      const incidentId = invData.incident?.incident_id || invData.incident_id;
+
+      // Step 5: Trigger Isolator
+      setStep(5);
+      const isoResp = await fetch(`${BASE}/api/agents/isolator/isolate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant: "hackathon-demo", trigger: { incident_id: incidentId } }),
+      });
+      const isoData = await isoResp.json();
+      setResults(prev => ({ ...prev, isolator: isoData }));
+
+      // Step 6: Trigger Recommender
+      setStep(6);
+      const recResp = await fetch(`${BASE}/api/agents/recommender/recommend-tick`, { method: "POST" });
+      const recData = await recResp.json();
+      setResults(prev => ({ ...prev, recommender: recData }));
+
+      setStep(7);
+    } catch (e: any) {
+      setError(e.message || "Pipeline failed");
+      setStep(0);
+    }
+  }
+
+  const STEPS = [
+    { id: "spawn", label: "Spawn Rogue", icon: Server, idx: 1 },
+    { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 2 },
+    { id: "auditor", label: "Auditor", icon: Eye, idx: 3 },
+    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 4 },
+    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 5 },
+    { id: "recommender", label: "Recommender", icon: Brain, idx: 6 },
+  ];
+
+  const running = step > 0 && step < 7;
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold">Simulate Full Pipeline</h3>
+            <p className="text-[11px] text-muted-foreground">Spawns a rogue agent, fires 4 unauthorized actions, then runs all 6 agents in sequence.</p>
+          </div>
+          <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2 text-xs" onClick={runPipeline} disabled={running}>
+            {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
+            {running ? "Running..." : "Run Pipeline"}
+          </Button>
+        </div>
+        {error && <p className="text-xs text-rose-600 mb-2">{error}</p>}
+        {step > 0 && (
+          <div className="flex items-center gap-1 flex-wrap text-xs mb-3">
+            {STEPS.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] ${step > s.idx ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400" : step === s.idx ? "border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400" : "border-border text-muted-foreground"}`}>
+                  {step === s.idx && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {step > s.idx && <CheckCircle2 className="w-3 h-3" />}
+                  {step < s.idx && <s.icon className="w-3 h-3" />}
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {rogueAgent && step >= 2 && (
+          <p className="text-[11px] text-muted-foreground mb-2">Rogue agent: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{rogueAgent}</code></p>
+        )}
+        {step === 7 && (
+          <div className="space-y-2">
+            {results.rogue && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
+                <ShieldOff className="w-3.5 h-3.5 text-rose-600" />
+                <span className="font-medium">Rogue Burst:</span>
+                <Badge variant="destructive" className="text-[10px]">{results.rogue.denials}/{results.rogue.total} denied</Badge>
+                <span className="text-muted-foreground">({results.rogue.actions.join(", ")})</span>
+              </div>
+            )}
+            {results.auditor && (
+              <button onClick={() => onAgentSelect("auditor")} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border hover:bg-muted/30 transition-colors cursor-pointer">
+                <Eye className="w-3.5 h-3.5 text-teal-600" />
+                <span className="text-xs font-medium">Auditor:</span>
+                <Badge className="text-[10px]" variant="outline">{results.auditor.audited || 0} audited</Badge>
+                {results.auditor.by_verdict?.CONFLICT > 0 && <Badge variant="destructive" className="text-[10px]">{results.auditor.by_verdict.CONFLICT} CONFLICT</Badge>}
+                <ChevronRight className="w-3 h-3 text-muted-foreground ml-auto" />
+              </button>
+            )}
+            {results.investigator && (
+              <button onClick={() => onAgentSelect("investigator")} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border hover:bg-muted/30 transition-colors cursor-pointer">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                <span className="text-xs font-medium">Investigation:</span>
+                <Badge className={`text-[10px] ${["HIGH","CRITICAL"].includes(results.investigator.incident?.severity || results.investigator.severity || "") ? "bg-rose-600/15 text-rose-600 border-rose-600/20" : "bg-amber-600/15 text-amber-600 border-amber-600/20"}`} variant="outline">
+                  {results.investigator.incident?.severity || results.investigator.severity || "—"}
+                </Badge>
+                <span className="text-[11px] text-muted-foreground truncate flex-1">{(results.investigator.incident?.incident_id || "").slice(0, 12)}...</span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+              </button>
+            )}
+            {results.isolator && (() => {
+              const isoAction = results.isolator.actions_taken?.[0]?.action || results.isolator.action || results.isolator.containment_action || "SKIPPED";
+              const isoReason = results.isolator.summary || results.isolator.actions_taken?.[0]?.rationale || results.isolator.reason || "";
+              const isContained = isoAction !== "SKIPPED";
+              return (
+                <button onClick={() => onAgentSelect("isolator")} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border hover:bg-muted/30 transition-colors cursor-pointer">
+                  <ShieldOff className="w-3.5 h-3.5 text-rose-600" />
+                  <span className="text-xs font-medium">Isolation:</span>
+                  <Badge className={`text-[10px] ${isContained ? "bg-rose-600/15 text-rose-600 border-rose-600/20" : ""}`} variant="outline">{isoAction}</Badge>
+                  <span className="text-[11px] text-muted-foreground truncate flex-1">{isoReason.slice(0, 60)}</span>
+                  <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                </button>
+              );
+            })()}
+            {results.recommender && (
+              <button onClick={() => onAgentSelect("recommender")} className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-md border hover:bg-muted/30 transition-colors cursor-pointer">
+                <Brain className="w-3.5 h-3.5 text-teal-600" />
+                <span className="text-xs font-medium">Recommender:</span>
+                <Badge className="text-[10px]" variant="outline">{results.recommender.proposals_created || 0} proposals</Badge>
+                <ChevronRight className="w-3 h-3 text-muted-foreground ml-auto" />
+              </button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Main Dashboard ---
 function TriggerAuditButton() {
   const [running, setRunning] = useState(false);
@@ -619,6 +812,9 @@ export default function DashboardPage() {
             <AgentCard key={a.id} agent={a} health={agentsHealth[a.id]} kid={keys[a.id] || ""} selected={selectedAgent === a.id} onClick={() => setSelectedAgent(a.id)} />
           ))}
         </div>
+
+        {/* Pipeline Simulator */}
+        <PipelineSimulator onAgentSelect={setSelectedAgent} />
 
         {/* Main Content + Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">

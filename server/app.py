@@ -735,10 +735,13 @@ async def proxy_agent_post(agent_name: str, path: str, request: Request):
     if not base:
         raise HTTPException(404, f"Unknown agent: {agent_name}")
     url = f"{base}/{path}"
-    body = await request.json()
-    async with httpx.AsyncClient(timeout=30) as client:
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    async with httpx.AsyncClient(timeout=120) as client:
         try:
-            resp = await client.post(url, json=body)
+            resp = await client.post(url, json=body) if body else await client.post(url)
             try:
                 return resp.json()
             except Exception:

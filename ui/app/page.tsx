@@ -697,31 +697,27 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
   const spinUpAgent = useCallback(async () => {
     setSpinUpLoading(true); setSpinUpError(""); setDemoAgent(null);
     try {
-      // Check health first
-      const health = await fetch(`${DEMO_AGENT_BASE}/health`).then(r => r.json());
-      if (!health.ok) throw new Error("Agent not reachable");
-
-      // Get the agent card
-      const card = await fetch(`${DEMO_AGENT_BASE}/.well-known/agent-card.json`).then(r => r.json());
-
-      // Self-register with the Gateway (PoP + card verification)
-      const reg = await fetch(`${DEMO_AGENT_BASE}/self-register`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-      }).then(r => r.json());
+      const resp = await fetch(`${DEMO_AGENT_BASE}/spawn`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Spawn failed: ${resp.status}`);
+      }
+      const reg = await resp.json();
 
       setDemoAgent({
-        name: card.name || health.agent,
-        agent_id: reg.agent_id || health.agent,
+        name: reg.agent_id,
+        agent_id: reg.agent_id,
         kid: reg.kid,
-        card_url: card.url ? `${card.url}/.well-known/agent-card.json` : `${DEMO_AGENT_BASE}/.well-known/agent-card.json`,
-        live_challenge_url: card.url ? `${card.url}/live-challenge` : `${DEMO_AGENT_BASE}/live-challenge`,
-        card_verification: reg.agent_card_verification,
-        live_verification: reg.live_challenge_verification,
-        pop: reg.proof_of_possession_at_registration,
+        card_url: reg.card_url,
+        live_challenge_url: reg.live_challenge_url,
+        card_verification: reg.card_verification,
+        live_verification: reg.live_verification,
+        pop: reg.pop,
       });
 
-      // Auto-select the agent and refresh registries
-      setSelectedAgent(reg.agent_id || health.agent);
+      setSelectedAgent(reg.agent_id);
       setTimeout(refreshRegistries, 500);
     } catch (e: any) {
       setSpinUpError(e.message || "Failed to spin up agent");
@@ -740,37 +736,32 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
       : deniedActions[Math.floor(Math.random() * deniedActions.length)];
     setEvents([]); setRunning(true); setLastFlow(flowType);
 
-    // If the selected agent is the demo-agent, call its /attack-resource endpoint
-    // which uses the demo-agent's own registered key for DPoP
-    if (selectedAgent === "demo-acme-analytics-agent") {
-      try {
-        setEvents(p => [...p, { step: "call_gateway", data: { agent: selectedAgent, action, resource: selectedResource, method: "demo-agent /attack-resource" }, ts: Date.now() / 1000 }]);
-        const resp = await fetch(`${BASE}/api/agents/demo-agent/attack-resource`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, resource: selectedResource }),
-        });
-        const result = await resp.json();
-        const decision = result.decision || result.gateway_response?.decision || "unknown";
-        const reasons = result.reason_codes || result.gateway_response?.reason_codes || [];
-        setEvents(p => [...p, {
-          step: "gateway_response",
-          data: { decision, reason_codes: reasons, agent: selectedAgent, action, resource: selectedResource, ...result },
-          ts: Date.now() / 1000,
-        }]);
-        setEvents(p => [...p, {
-          step: "done",
-          data: { decision, blocked: decision === "deny", code: reasons[0] || decision },
-          ts: Date.now() / 1000,
-        }]);
-      } catch (e: any) {
-        setEvents(p => [...p, { step: "error", data: { message: e.message }, ts: Date.now() / 1000 }]);
-      }
-    } else {
-      // Fallback: use the UI backend's compliant-flow for other agents
-      try {
-        await streamSSE("/api/compliant-flow", { action, resource: selectedResource }, ev => setEvents(p => [...p, ev]));
-      } catch {}
+    // Always route through the demo-agent's /attack-resource endpoint
+    // which holds the spawned agent's private key and builds a proper DPoP proof
+    try {
+      setEvents(p => [...p, { step: "call_gateway", data: { agent: selectedAgent, action, resource: selectedResource, method: "demo-agent /attack-resource" }, ts: Date.now() / 1000 }]);
+      const resp = await fetch(`${BASE}/api/agents/demo-agent/attack-resource`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: selectedAgent, action, resource: selectedResource }),
+      });
+      const result = await resp.json();
+      const gwStatus = result.gateway_status;
+      const decision = result.decision || result.gateway_response?.decision || (gwStatus === 401 || gwStatus === 403 ? "deny" : "unknown");
+      const gwDetail = result.gateway_response?.detail;
+      const reasons = result.reason_codes || result.gateway_response?.reason_codes || (gwDetail ? [gwDetail.split(":")[0]] : []);
+      setEvents(p => [...p, {
+        step: "gateway_response",
+        data: { decision, reason_codes: reasons, agent: selectedAgent, action, resource: selectedResource, ...result },
+        ts: Date.now() / 1000,
+      }]);
+      setEvents(p => [...p, {
+        step: "done",
+        data: { decision, blocked: decision === "deny", code: reasons[0] || decision },
+        ts: Date.now() / 1000,
+      }]);
+    } catch (e: any) {
+      setEvents(p => [...p, { step: "error", data: { message: e.message }, ts: Date.now() / 1000 }]);
     }
     setRunning(false);
     onFlowComplete?.();
@@ -784,14 +775,12 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold">Step 1: Spin Up AI Agent</h3>
-              <p className="text-xs text-muted-foreground">Launch a real AI agent on Cloud Run with its own Ed25519 identity and A2A card.</p>
+              <p className="text-xs text-muted-foreground">Each click creates a brand-new agent with a unique Ed25519 identity, A2A card, and Gateway registration.</p>
             </div>
-            {!demoAgent && (
-              <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2" onClick={spinUpAgent} disabled={spinUpLoading}>
-                {spinUpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5" />}
-                {spinUpLoading ? "Spinning up..." : "Spin Up Agent"}
-              </Button>
-            )}
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-2" onClick={spinUpAgent} disabled={spinUpLoading}>
+              {spinUpLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5" />}
+              {spinUpLoading ? "Spinning up..." : demoAgent ? "Spin Up Another" : "Spin Up Agent"}
+            </Button>
           </div>
           {spinUpError && <p className="text-xs text-rose-600">{spinUpError}</p>}
           {demoAgent && (
@@ -826,13 +815,13 @@ function AgentWorkflowPanel({ onFlowComplete }: { onFlowComplete?: () => void })
                 <span>PoP: <Badge className="bg-emerald-600/15 text-emerald-700 border-emerald-600/20 text-[9px]">verified</Badge></span>
               </div>
               <div className="rounded-md border border-teal-500/30 bg-teal-50/50 dark:bg-teal-950/10 p-2 text-xs">
-                <p className="font-medium text-teal-700 dark:text-teal-400">Agent is already registered. Next steps:</p>
+                <p className="font-medium text-teal-700 dark:text-teal-400">Fresh agent registered. Next steps:</p>
                 <ol className="list-decimal list-inside mt-1 space-y-0.5 text-muted-foreground">
                   <li>Go to <a href="/policies" className="text-teal-600 hover:underline font-medium">Policies</a> and create a binding: <strong>{demoAgent.agent_id}</strong> can <strong>read</strong> on a resource</li>
-                  <li>Come back here, select <strong>{demoAgent.agent_id}</strong> in the Agent dropdown below</li>
+                  <li>Come back here — <strong>{demoAgent.agent_id}</strong> is auto-selected below</li>
                   <li>Click <strong>Authorized Flow</strong> or <strong>Unauthorized Flow</strong></li>
                 </ol>
-                <p className="mt-1 text-muted-foreground">Do NOT re-register this agent on the Agents page — it's already registered with its own server-side key.</p>
+                <p className="mt-1 text-muted-foreground">Each "Spin Up" creates a completely new agent with its own cryptographic identity.</p>
               </div>
             </div>
           )}
