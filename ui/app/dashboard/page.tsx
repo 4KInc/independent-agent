@@ -192,15 +192,22 @@ function RecommenderView({ onNavigateToAudit }: { onNavigateToAudit?: (auditId: 
                     <p className="text-xs">{trigger.pattern_summary}</p>
                   </div>
                 )}
-                {(diff.current || diff.proposed) && (
-                  <div>
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Policy Diff</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <pre className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-rose-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">{typeof diff.current === "string" ? diff.current : JSON.stringify(diff.current, null, 2)}</pre>
-                      <pre className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-emerald-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">{typeof diff.proposed === "string" ? diff.proposed : JSON.stringify(diff.proposed, null, 2)}</pre>
+                {(diff.current || diff.proposed) && (() => {
+                  const currentStr = typeof diff.current === "string" ? diff.current : JSON.stringify(diff.current, null, 2);
+                  const proposedStr = typeof diff.proposed === "string" ? diff.proposed : JSON.stringify(diff.proposed, null, 2);
+                  const isNew = !currentStr || currentStr === "..." || currentStr === '""' || currentStr === "null";
+                  return (
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Policy Diff</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-rose-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">
+                          {isNew ? <span className="text-muted-foreground italic">No existing rule</span> : currentStr}
+                        </div>
+                        <pre className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-50 dark:bg-zinc-900 border-l-2 border-emerald-400 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all text-zinc-700 dark:text-zinc-300">{proposedStr}</pre>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 {change.rationale && (
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Rationale</p>
