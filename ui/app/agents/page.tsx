@@ -35,7 +35,7 @@ type FormMode = "generate" | "paste";
 
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [mode, setMode] = useState<FormMode>("generate");
-  const [agentId, setAgentId] = useState("");
+  const [agentName, setAgentName] = useState("");
   const [pastedKey, setPastedKey] = useState("");
   const [generatedJwk, setGeneratedJwk] = useState<any>(null);
   const [privateKeyObj, setPrivateKeyObj] = useState<CryptoKey | null>(null);
@@ -47,14 +47,10 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
 
-  // Validation
-  const idPattern = /^[a-zA-Z0-9_-]{3,64}$/;
-  const idValid = idPattern.test(agentId);
-  const idError = agentId.length > 0 && !idValid
-    ? (agentId.length < 3 ? "Must be at least 3 characters"
-      : agentId.length > 64 ? "Must be at most 64 characters"
-      : "Only letters, numbers, hyphens, underscores")
-    : "";
+  // Auto-generate agent_id from name
+  const agentId = agentName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
+  const nameValid = agentName.trim().length >= 3;
+  const idValid = agentId.length >= 3;
 
   // Parse pasted key
   function parsePastedKey(): { jwk: any; error: string } {
@@ -235,13 +231,13 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   // Can submit?
   // Paste mode cannot do browser-side PoP (no private key); only generate mode works
   const canSubmit =
-    idValid &&
+    nameValid && idValid &&
     !loading &&
     mode === "generate" && generatedJwk && keySaved && privateKeyObj !== null;
 
   // Reset form
   function reset() {
-    setAgentId("");
+    setAgentName("");
     setPastedKey("");
     setAgentCardUrl("");
     setLiveChallengeUrl("");
@@ -332,17 +328,19 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Agent ID */}
+        {/* Agent Name */}
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Agent ID</label>
+          <label className="text-sm font-medium">Agent Name <span className="text-rose-500">*</span></label>
           <input
-            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
-            placeholder="e.g., claude-analytics-prod-01"
-            value={agentId}
-            onChange={e => setAgentId(e.target.value)}
+            className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
+            placeholder="e.g., Claude Analytics Prod"
+            value={agentName}
+            onChange={e => setAgentName(e.target.value)}
           />
-          {idError && <p className="text-xs text-rose-500">{idError}</p>}
-          <p className="text-xs text-muted-foreground">3-64 characters. Letters, numbers, hyphens, underscores.</p>
+          {agentName.trim().length > 0 && agentName.trim().length < 3 && <p className="text-xs text-rose-500">Must be at least 3 characters</p>}
+          {agentId && (
+            <p className="text-xs text-muted-foreground">Agent ID: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{agentId}</code> (auto-generated)</p>
+          )}
         </div>
 
         {/* Key mode toggle */}

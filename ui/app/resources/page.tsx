@@ -28,7 +28,6 @@ function timeAgo(ts: string | number): string {
 // ─── Register Resource Form ─────────────────────────────────────────────────
 
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
-  const [resourceId, setResourceId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [resourceType, setResourceType] = useState("");
@@ -37,10 +36,10 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
 
-  const idPattern = /^[a-zA-Z0-9._\/-]{1,256}$/;
-  const idValid = idPattern.test(resourceId);
-  const idError = resourceId.length > 0 && !idValid ? "Letters, numbers, dots, slashes, hyphens, underscores" : "";
+  // Auto-generate resource_id from display name
+  const resourceId = displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 256);
   const nameValid = displayName.trim().length > 0;
+  const idValid = resourceId.length > 0;
 
   async function handleSubmit() {
     setError(""); setLoading(true);
@@ -68,7 +67,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   function reset() {
-    setResourceId(""); setDisplayName(""); setDescription("");
+    setDisplayName(""); setDescription("");
     setResourceType(""); setOwner(""); setSuccess(null); setError("");
   }
 
@@ -107,21 +106,15 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Resource ID <span className="text-rose-500">*</span></label>
-            <input
-              className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)]"
-              placeholder="e.g., staging-analytics-db"
-              value={resourceId} onChange={e => setResourceId(e.target.value)}
-            />
-            {idError && <p className="text-xs text-rose-500">{idError}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Display Name <span className="text-rose-500">*</span></label>
+            <label className="text-sm font-medium">Resource Name <span className="text-rose-500">*</span></label>
             <input
               className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
               placeholder="e.g., Staging Analytics Database"
               value={displayName} onChange={e => setDisplayName(e.target.value)}
             />
+            {resourceId && (
+              <p className="text-xs text-muted-foreground">Resource ID: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{resourceId}</code> (auto-generated)</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Type <span className="text-rose-500">*</span></label>
