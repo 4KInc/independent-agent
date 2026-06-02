@@ -147,6 +147,7 @@ function BindingForm({ agents, resources, actions, onSuccess }: {
 function PolicyView({ policy, onRefresh, onDeleteBinding }: {
   policy: any; onRefresh: () => void; onDeleteBinding: (ruleId: string) => void;
 }) {
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const rules = policy?.rules || [];
   const bindings = rules.filter((r: any) => r.type === "agent_binding");
   const otherRules = rules.filter((r: any) => r.type !== "agent_binding");
@@ -180,10 +181,18 @@ function PolicyView({ policy, onRefresh, onDeleteBinding }: {
                   <span className="text-muted-foreground">on</span>
                   <Badge className="text-xs bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-600/20">{r.config?.resource_id}</Badge>
                   <div className="flex-1" />
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600"
-                    onClick={() => onDeleteBinding(r.id)}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  {confirmingDeleteId === r.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-rose-600">Delete this binding?</span>
+                      <Button size="sm" variant="destructive" onClick={() => { onDeleteBinding(r.id); setConfirmingDeleteId(null); }}>Confirm</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmingDeleteId(null)}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600"
+                      onClick={() => setConfirmingDeleteId(r.id)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -235,20 +244,27 @@ export default function PoliciesPage() {
   const [policy, setPolicy] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const [aResp, rResp, actResp, pResp] = await Promise.all([
-        fetch(`${BASE}/api/agents/gateway/agents`).then(r => r.json()),
-        fetch(`${BASE}/api/agents/gateway/resources?limit=100`).then(r => r.json()),
-        fetch(`${BASE}/api/agents/gateway/actions?limit=100`).then(r => r.json()),
-        fetch(`${BASE}/api/agents/gateway/policy`).then(r => r.json()),
+        fetch(`${BASE}/api/agents/gateway/agents`).then(r => { if (!r.ok) throw new Error(`Agents: HTTP ${r.status}`); return r.json(); }),
+        fetch(`${BASE}/api/agents/gateway/resources?limit=100`).then(r => { if (!r.ok) throw new Error(`Resources: HTTP ${r.status}`); return r.json(); }),
+        fetch(`${BASE}/api/agents/gateway/actions?limit=100`).then(r => { if (!r.ok) throw new Error(`Actions: HTTP ${r.status}`); return r.json(); }),
+        fetch(`${BASE}/api/agents/gateway/policy`).then(r => { if (!r.ok) throw new Error(`Policy: HTTP ${r.status}`); return r.json(); }),
       ]);
       setAgents(aResp.agents || []);
       setResources(rResp.resources || []);
       setActions(actResp.actions || []);
       setPolicy(pResp);
-    } catch {}
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setFetchError(message);
+      console.error("Failed to fetch policy data:", e);
+    }
     setLoading(false);
   }, []);
 
@@ -277,6 +293,13 @@ export default function PoliciesPage() {
             Define which agents can perform which actions on which resources. Each binding creates an authorization rule evaluated by the Gateway on every request.
           </p>
         </div>
+
+        {fetchError && (
+          <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 mb-4">
+            <p className="text-sm text-amber-900 dark:text-amber-300">Could not load policy data: {fetchError}</p>
+            <button onClick={fetchAll} className="mt-2 text-sm underline text-amber-900 dark:text-amber-300">Retry</button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center gap-2 justify-center py-12 text-muted-foreground">

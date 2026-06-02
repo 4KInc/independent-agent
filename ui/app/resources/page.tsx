@@ -301,14 +301,21 @@ export default function ResourcesPage() {
   const [resources, setResources] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchResources = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const resp = await fetch(`${BASE}/api/agents/gateway/resources?limit=100&include_revoked=false`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       const data = await resp.json();
       setResources(data.resources || []);
-    } catch {}
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setFetchError(message);
+      console.error("Failed to fetch resources:", e);
+    }
     setLoading(false);
   }, []);
 
@@ -353,6 +360,12 @@ export default function ResourcesPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {fetchError && (
+              <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 mb-4">
+                <p className="text-sm text-amber-900 dark:text-amber-300">Could not load resources: {fetchError}</p>
+                <button onClick={() => { fetchResources(); fetchReceipts(); }} className="mt-2 text-sm underline text-amber-900 dark:text-amber-300">Retry</button>
+              </div>
+            )}
             <ResourcesList resources={resources} loading={loading} receipts={receipts} onRevoke={handleRevoke} />
           </CardContent>
         </Card>

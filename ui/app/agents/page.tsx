@@ -560,14 +560,19 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
 export default function AgentsPage() {
   const [agents, setAgents] = useState<any[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchAgents = useCallback(async () => {
+    setFetchError(null);
     try {
       const resp = await fetch(`${BASE}/api/agents/gateway/agents`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       const data = await resp.json();
       setAgents(data.agents || []);
-    } catch {
-      // silently fail
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setFetchError(message);
+      console.error("Failed to fetch agents:", e);
     }
     setAgentsLoading(false);
   }, []);
@@ -596,6 +601,12 @@ export default function AgentsPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {fetchError && (
+              <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 mb-4">
+                <p className="text-sm text-amber-900 dark:text-amber-300">Could not load agents: {fetchError}</p>
+                <button onClick={fetchAgents} className="mt-2 text-sm underline text-amber-900 dark:text-amber-300">Retry</button>
+              </div>
+            )}
             <AgentsList agents={agents} loading={agentsLoading} />
           </CardContent>
         </Card>
