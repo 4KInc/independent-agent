@@ -547,6 +547,77 @@ function SigningKeysSidebar({ keys }: { keys: Record<string, string> }) {
   );
 }
 
+// --- Liveness Summary (Continuous Attestation) ---
+function LivenessSummary() {
+  const [data, setData] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/agents/gateway/agents/liveness`).then(r => r.json()).then(setData).catch(() => {});
+  }, []);
+
+  if (!data) return null;
+
+  const summary = data.summary || {};
+  const agents = data.agents || [];
+  const total = agents.length;
+
+  const stateColors: Record<string, string> = {
+    LIVE: "text-emerald-600",
+    WARNING: "text-amber-600",
+    STALE: "text-orange-600",
+    SUSPENDED: "text-rose-600",
+    UNKNOWN: "text-zinc-500",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+          <Activity className="w-3 h-3" /> Continuous Attestation
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {total === 0 ? (
+          <p className="text-[10px] text-muted-foreground">No agents with liveness tracking.</p>
+        ) : (
+          <>
+            <div className="flex gap-3 text-xs">
+              {(["LIVE", "WARNING", "STALE", "SUSPENDED"] as const).map(s => (
+                (summary[s] || 0) > 0 && (
+                  <span key={s} className={`font-medium ${stateColors[s]}`}>{summary[s]} {s.toLowerCase()}</span>
+                )
+              ))}
+            </div>
+            <Collapsible open={expanded} onOpenChange={setExpanded}>
+              <CollapsibleTrigger className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-foreground">
+                <ChevronRight className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                {total} agents tracked (interval: {data.attestation_interval}s)
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-1 mt-1.5">
+                  {agents.map((a: any) => (
+                    <div key={a.agent_id} className="flex items-center gap-2 text-[10px]">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        a.state === "LIVE" ? "bg-emerald-500" :
+                        a.state === "WARNING" ? "bg-amber-500" :
+                        a.state === "STALE" ? "bg-orange-500" :
+                        a.state === "SUSPENDED" ? "bg-rose-500" : "bg-zinc-400"
+                      }`} />
+                      <code className="font-[var(--font-geist-mono)] truncate flex-1">{a.agent_id}</code>
+                      <span className={`shrink-0 ${stateColors[a.state] || ""}`}>{a.state}</span>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
   // 0=idle, 1=spawning rogue, 2=rogue burst, 3=auditing, 4=investigating, 5=isolating, 6=recommending, 7=done
@@ -835,6 +906,7 @@ export default function DashboardPage() {
           </Card>
           <div className="space-y-4">
             <SigningKeysSidebar keys={keys} />
+            <LivenessSummary />
           </div>
         </div>
 

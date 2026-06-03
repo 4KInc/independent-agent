@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Database, Plus, Copy, CheckCircle2, Loader2, Clock, ChevronRight,
-  Shield, Trash2, RefreshCw, FileText,
+  Shield, Trash2, RefreshCw, FileText, AlertTriangle, Info,
+  Globe, HardDrive, MessageSquare, Zap,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -23,6 +24,40 @@ function timeAgo(ts: string | number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// ─── Resource type icons ────────────────────────────────────────────────────
+
+const RESOURCE_TYPE_ICONS: Record<string, typeof Database> = {
+  db: Database,
+  api: Globe,
+  storage: HardDrive,
+  queue: MessageSquare,
+  function: Zap,
+};
+
+function ResourceTypeIcon({ type }: { type: string }) {
+  const Icon = RESOURCE_TYPE_ICONS[type] || Database;
+  return <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
+}
+
+// ─── Verification badge ────────────────────────────────────────────────────
+
+const VERIFICATION_STYLES: Record<string, { color: string; label: string; Icon: typeof CheckCircle2 }> = {
+  verified:      { color: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20", label: "Verified", Icon: CheckCircle2 },
+  metadata_only: { color: "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-600/20", label: "Metadata Only", Icon: Info },
+  failed:        { color: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20", label: "Failed", Icon: AlertTriangle },
+  skipped:       { color: "bg-zinc-600/10 text-zinc-600 dark:text-zinc-400 border-zinc-600/20", label: "Skipped", Icon: Info },
+};
+
+function VerificationBadge({ status, reason }: { status: string; reason?: string }) {
+  const s = VERIFICATION_STYLES[status] || VERIFICATION_STYLES.skipped;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${s.color}`} title={reason || ""}>
+      <s.Icon className="w-2.5 h-2.5" />
+      {s.label}
+    </span>
+  );
 }
 
 // ─── Register Resource Form ─────────────────────────────────────────────────
@@ -84,11 +119,27 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               <span className="text-muted-foreground w-24">Resource ID:</span>
               <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded">{success.resource_id}</code>
             </div>
+            {success.resource_type && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-24">Type:</span>
+                <span>{success.resource_type}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground w-24">Version:</span>
-              <span>{success.version}</span>
+              <span className="text-muted-foreground w-24">Verification:</span>
+              <VerificationBadge status={success.verification || "skipped"} reason={success.verification_reason} />
             </div>
           </div>
+          {success.verification === "metadata_only" && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Resource metadata was recorded but no live probe was performed. Provide a reachability_url or GCP-native metadata for live verification.
+            </p>
+          )}
+          {success.verification === "failed" && (
+            <p className="text-xs text-rose-600 dark:text-rose-400">
+              Live verification failed: {success.verification_reason}. The resource is registered but its existence could not be confirmed.
+            </p>
+          )}
           <Button variant="outline" size="sm" onClick={reset}>Register another</Button>
         </CardContent>
       </Card>
@@ -124,6 +175,10 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             >
               <option value="">Select a type</option>
               <option value="db">Database</option>
+              <option value="api">API Endpoint</option>
+              <option value="storage">File Storage / Object Store</option>
+              <option value="queue">Message Queue / Event Stream</option>
+              <option value="function">Function / Compute</option>
             </select>
           </div>
           <div className="space-y-1.5">
@@ -250,7 +305,7 @@ function ResourcesList({ resources, loading, receipts, onRevoke }: {
               onClick={() => setExpanded(isOpen ? null : res.resource_id)}
               className="w-full flex items-center gap-3 text-xs py-2.5 px-3 text-left cursor-pointer"
             >
-              <Database className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <ResourceTypeIcon type={res.resource_type || "db"} />
               <code className="font-[var(--font-geist-mono)] font-medium truncate w-48">{res.resource_id}</code>
               <span className="text-muted-foreground truncate flex-1">{res.display_name}</span>
               {res.resource_type && <Badge className="text-[10px] shrink-0 bg-blue-600/15 text-blue-700 dark:text-blue-400 border-blue-600/20">{res.resource_type}</Badge>}

@@ -162,6 +162,10 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             <select className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2"
               value={resourceType} onChange={e => setResourceType(e.target.value)}>
               <option value="db">Database</option>
+              <option value="api">API Endpoint</option>
+              <option value="storage">File Storage / Object Store</option>
+              <option value="queue">Message Queue / Event Stream</option>
+              <option value="function">Function / Compute</option>
             </select>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   KeyRound, UserPlus, Copy, CheckCircle2, AlertTriangle, Loader2,
-  Download, Shield, Clock,
+  Download, Shield, Clock, Activity, RefreshCw, ShieldAlert, ShieldOff,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -313,6 +313,13 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               </p>
             </div>
           )}
+          {success.liveness_state && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Activity className="w-3 h-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Continuous attestation:</span>
+              <LivenessBadge state={success.liveness_state} />
+            </div>
+          )}
           <Button variant="outline" size="sm" onClick={reset}>Register another agent</Button>
         </CardContent>
       </Card>
@@ -461,9 +468,24 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+// ─── Liveness Badge ─────────────────────────────────────────────────────────
+
+const LIVENESS_STYLES: Record<string, { color: string; label: string }> = {
+  LIVE:      { color: "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20", label: "Live" },
+  WARNING:   { color: "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-600/20", label: "Warning" },
+  STALE:     { color: "bg-orange-600/15 text-orange-700 dark:text-orange-400 border-orange-600/20", label: "Stale" },
+  SUSPENDED: { color: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20", label: "Suspended" },
+  UNKNOWN:   { color: "bg-zinc-600/10 text-zinc-600 dark:text-zinc-400 border-zinc-600/20", label: "Unknown" },
+};
+
+function LivenessBadge({ state }: { state: string | undefined }) {
+  const s = LIVENESS_STYLES[state || "UNKNOWN"] || LIVENESS_STYLES.UNKNOWN;
+  return <Badge className={`text-[10px] ${s.color}`}>{s.label}</Badge>;
+}
+
 // ─── Registered Agents List ──────────────────────────────────────────────────
 
-function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
+function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loading: boolean; onCheckLiveness: (agentId: string) => void }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 justify-center py-8 text-muted-foreground">
@@ -489,6 +511,7 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
             <th className="py-2 pr-4 font-medium">Key ID</th>
             <th className="py-2 pr-4 font-medium">Card</th>
             <th className="py-2 pr-4 font-medium">Live</th>
+            <th className="py-2 pr-4 font-medium">Attestation</th>
             <th className="py-2 font-medium">Registered</th>
           </tr>
         </thead>
@@ -541,6 +564,25 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
               </td>
+              <td className="py-2.5 pr-4">
+                <div className="flex items-center gap-1.5">
+                  <LivenessBadge state={agent.liveness_state} />
+                  {agent.live_challenge_url && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onCheckLiveness(agent.agent_id); }}
+                      className="text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="Re-challenge this agent now"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                {agent.liveness_verified_at && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Verified {new Date(agent.liveness_verified_at).toLocaleTimeString()}
+                  </p>
+                )}
+              </td>
               <td className="py-2.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="w-3 h-3" />
@@ -555,12 +597,120 @@ function AgentsList({ agents, loading }: { agents: any[]; loading: boolean }) {
   );
 }
 
+// ─── Continuous Attestation Summary ──────────────────────────────────────────
+
+function LivenessSummaryCard({ onSweep }: { onSweep: () => void }) {
+  const [summary, setSummary] = useState<any>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepResult, setSweepResult] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`${BASE}/api/agents/gateway/agents/liveness`)
+      .then(r => r.json())
+      .then(setSummary)
+      .catch(() => {});
+  }, []);
+
+  const handleSweep = async () => {
+    setSweeping(true);
+    setSweepResult("");
+    try {
+      const resp = await fetch(`${BASE}/api/agents/gateway/agents/liveness/sweep`, { method: "POST" });
+      const data = await resp.json();
+      setSweepResult(`Checked ${data.checked}: ${data.passed} passed, ${data.failed} failed`);
+      // Refresh summary
+      const summaryResp = await fetch(`${BASE}/api/agents/gateway/agents/liveness`);
+      setSummary(await summaryResp.json());
+      onSweep();
+      setTimeout(() => setSweepResult(""), 5000);
+    } catch {
+      setSweepResult("Sweep failed");
+      setTimeout(() => setSweepResult(""), 3000);
+    }
+    setSweeping(false);
+  };
+
+  if (!summary || !summary.agents?.length) return null;
+
+  const s = summary.summary || {};
+  const total = (s.LIVE || 0) + (s.WARNING || 0) + (s.STALE || 0) + (s.SUSPENDED || 0) + (s.UNKNOWN || 0);
+  const healthy = (s.LIVE || 0);
+  const degraded = (s.WARNING || 0) + (s.STALE || 0) + (s.SUSPENDED || 0);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm">Continuous Attestation</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            {sweepResult && <span className="text-xs text-emerald-600">{sweepResult}</span>}
+            <Button variant="outline" size="sm" onClick={handleSweep} disabled={sweeping} className="gap-1.5 text-xs h-7">
+              {sweeping ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Sweep All
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            <span>{s.LIVE || 0} Live</span>
+          </div>
+          {(s.WARNING || 0) > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+              <span>{s.WARNING} Warning</span>
+            </div>
+          )}
+          {(s.STALE || 0) > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+              <span>{s.STALE} Stale</span>
+            </div>
+          )}
+          {(s.SUSPENDED || 0) > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
+              <span>{s.SUSPENDED} Suspended</span>
+            </div>
+          )}
+          {(s.UNKNOWN || 0) > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-zinc-400" />
+              <span>{s.UNKNOWN} No URL</span>
+            </div>
+          )}
+          <span className="text-muted-foreground ml-auto">
+            Interval: {Math.round((summary.attestation_interval || 3600) / 60)}m
+          </span>
+        </div>
+        {degraded > 0 && (
+          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-2">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="w-3 h-3 inline mr-1" />
+              {degraded} agent{degraded > 1 ? "s" : ""} with degraded liveness — authorization may be restricted.
+              {(s.STALE || 0) > 0 && " STALE agents are denied new authorizations."}
+              {(s.SUSPENDED || 0) > 0 && " SUSPENDED agents are fully locked out."}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<any[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [checkingAgent, setCheckingAgent] = useState<string | null>(null);
+  const [livenessKey, setLivenessKey] = useState(0);
 
   const fetchAgents = useCallback(async () => {
     setFetchError(null);
@@ -579,19 +729,32 @@ export default function AgentsPage() {
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
+  const handleCheckLiveness = async (agentId: string) => {
+    setCheckingAgent(agentId);
+    try {
+      await fetch(`${BASE}/api/agents/gateway/agents/${agentId}/liveness/check`, { method: "POST" });
+      await fetchAgents();
+      setLivenessKey(k => k + 1);
+    } catch { /* ignore */ }
+    setCheckingAgent(null);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <SiteHeader />
 
-      <div className="flex-1 max-w-[900px] mx-auto w-full p-6 space-y-6">
+      <div className="flex-1 max-w-[1000px] mx-auto w-full p-6 space-y-6">
         <div>
           <h1 className="text-lg font-semibold">Registered Agents</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Register AI agents with the Gateway. Each agent receives a unique key ID (kid) used to verify its DPoP identity proofs during authorization.
+            Agents with a live challenge URL are continuously re-verified.
           </p>
         </div>
 
         <RegisterForm onSuccess={fetchAgents} />
+
+        <LivenessSummaryCard key={livenessKey} onSweep={() => { fetchAgents(); setLivenessKey(k => k + 1); }} />
 
         <Card>
           <CardHeader className="pb-3">
@@ -607,7 +770,7 @@ export default function AgentsPage() {
                 <button onClick={fetchAgents} className="mt-2 text-sm underline text-amber-900 dark:text-amber-300">Retry</button>
               </div>
             )}
-            <AgentsList agents={agents} loading={agentsLoading} />
+            <AgentsList agents={agents} loading={agentsLoading} onCheckLiveness={handleCheckLiveness} />
           </CardContent>
         </Card>
       </div>
