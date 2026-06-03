@@ -893,7 +893,7 @@ async def activity_stream(limit: int = 20):
                     "agent": "Recommender",
                     "type": "proposal",
                     "ts": b.get("proposed_at", ""),
-                    "summary": f"Proposal: {b.get('change_type','?')}. Confidence {b.get('confidence','?')}.",
+                    "summary": f"Proposal: {b.get('proposed_change',{}).get('change_type','?')}. Confidence {b.get('confidence','?')}.",
                     "data": {"confidence": b.get("confidence")},
                 })
         except Exception:
