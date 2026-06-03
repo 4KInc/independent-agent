@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Shield, ShieldOff, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
   ChevronRight, Copy, ExternalLink, CheckCircle2, XCircle,
-  AlertTriangle, Clock, Activity,
+  AlertTriangle, Clock, Activity, Anchor, Link,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -618,6 +618,95 @@ function LivenessSummary() {
   );
 }
 
+// --- Artifact Anchoring (Unified Merkle Tree) ---
+function ArtifactAnchoring() {
+  const [anchors, setAnchors] = useState<any[]>([]);
+  const [logData, setLogData] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/agents/gateway/anchors`).then(r => r.json()).then(d => {
+      setAnchors(d.on_chain_anchors || []);
+    }).catch(() => {});
+    fetch(`${BASE}/api/agents/gateway/artifacts/log?limit=10`).then(r => r.json()).then(setLogData).catch(() => {});
+  }, []);
+
+  const latest = anchors[0];
+  const artifactCount = logData?.head_seq || 0;
+
+  const TYPE_LABELS: Record<string, string> = {
+    receipt: "Receipt",
+    audit_report: "Audit Report",
+    policy_proposal: "Policy Proposal",
+    incident_report: "Incident Report",
+    isolation_record: "Isolation Record",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+          <Anchor className="w-3 h-3" /> Artifact Anchoring
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="text-xs text-muted-foreground">
+          {artifactCount} artifacts in unified log
+        </div>
+
+        {latest ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Anchored to Base L2</span>
+            </div>
+            <a
+              href={latest.basescan_url || `https://basescan.org/tx/${latest.tx_hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[10px] text-blue-600 hover:underline"
+            >
+              <ExternalLink className="w-2.5 h-2.5" />
+              {String(latest.tx_hash || "").slice(0, 18)}...
+            </a>
+            <div className="text-[10px] text-muted-foreground space-y-0.5">
+              <div>Block: {latest.block_number?.toLocaleString()}</div>
+              {latest.artifact_count && <div>Artifacts in batch: {latest.artifact_count}</div>}
+              <div>Root: <code className="font-[var(--font-geist-mono)]">{String(latest.merkle_root || "").slice(0, 20)}...</code></div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[10px] text-muted-foreground">No on-chain anchors yet. Anchoring triggers every 10 artifacts or hourly.</p>
+        )}
+
+        {logData?.entries?.length > 0 && (
+          <Collapsible open={expanded} onOpenChange={setExpanded}>
+            <CollapsibleTrigger className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-foreground">
+              <ChevronRight className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`} />
+              Recent artifacts in log
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="space-y-0.5 mt-1.5">
+                {logData.entries.map((e: any) => (
+                  <div key={e.seq} className="flex items-center gap-1.5 text-[10px]">
+                    <Badge variant="outline" className="text-[8px] px-1 py-0">#{e.seq}</Badge>
+                    <span className="text-muted-foreground w-20 truncate">{TYPE_LABELS[e.artifact_type] || e.artifact_type}</span>
+                    <code className="font-[var(--font-geist-mono)] text-muted-foreground truncate flex-1">{e.artifact_hash?.slice(0, 16)}...</code>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {anchors.length > 1 && (
+          <p className="text-[10px] text-muted-foreground pt-1 border-t">{anchors.length} total anchors on Base L2</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
   // 0=idle, 1=spawning rogue, 2=rogue burst, 3=auditing, 4=investigating, 5=isolating, 6=recommending, 7=done
@@ -907,6 +996,7 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <SigningKeysSidebar keys={keys} />
             <LivenessSummary />
+            <ArtifactAnchoring />
           </div>
         </div>
 
