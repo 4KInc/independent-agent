@@ -709,17 +709,93 @@ function ArtifactAnchoring() {
 
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
-  // 0=idle, 1=spawning rogue, 2=rogue burst, 3=auditing, 4=investigating, 5=isolating, 6=recommending, 7=done
+  // 0=idle, 1=setup resources, 2=setup actions, 3=setup policy, 4=spawn rogue,
+  // 5=rogue burst, 6=auditing, 7=investigating, 8=isolating, 9=recommending, 10=done
   const [step, setStep] = useState(0);
   const [results, setResults] = useState<Record<string, any>>({});
   const [error, setError] = useState("");
   const [rogueAgent, setRogueAgent] = useState("");
 
+  const GW = `${BASE}/api/agents/gateway`;
+
+  async function postJson(url: string, body: any) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return r.json();
+  }
+
   async function runPipeline() {
     setStep(1); setResults({}); setError(""); setRogueAgent("");
 
     try {
-      // Step 1: Spawn a rogue agent
+      // Step 1: Register resources (with live verification)
+      const resources = [
+        { resource_id: "staging-analytics-db", display_name: "Staging Analytics Database", resource_type: "db",
+          metadata: { engine: "firestore", provider: "firestore", project_id: "quick-catcher-470218-b0" } },
+        { resource_id: "compliance-docs-bucket", display_name: "Compliance Documents", resource_type: "storage",
+          metadata: { bucket: "quick-catcher-470218-b0-auditor-compliance-docs", provider: "gcs" } },
+        { resource_id: "audit-events-topic", display_name: "Audit Events Stream", resource_type: "queue",
+          metadata: { topic: "auditor-conflicts", provider: "pubsub", project_id: "quick-catcher-470218-b0" } },
+        { resource_id: "gateway-health-api", display_name: "Gateway Health API", resource_type: "api",
+          reachability_url: "https://agent-auth-gateway-1031148889398.us-central1.run.app/health" },
+      ];
+      const resourceResults: any[] = [];
+      for (const r of resources) {
+        const res = await postJson(`${GW}/resources/register`, r);
+        resourceResults.push(res);
+      }
+      setResults(prev => ({
+        ...prev,
+        resources: {
+          registered: resourceResults.filter(r => r.status === "registered").length,
+          verified: resourceResults.filter(r => r.verification === "verified").length,
+          total: resources.length,
+          details: resourceResults,
+        },
+      }));
+
+      // Step 2: Register actions
+      setStep(2);
+      const actions = [
+        { action_id: "read", display_name: "Read", risk_level: "low", resource_type: "db", description: "Read-only data access" },
+        { action_id: "query", display_name: "Query", risk_level: "low", resource_type: "db", description: "Database query" },
+        { action_id: "delete", display_name: "Delete", risk_level: "high", resource_type: "db", requires_human_approval: true, description: "Destructive: removes data" },
+        { action_id: "admin", display_name: "Admin", risk_level: "critical", resource_type: "db", requires_human_approval: true, description: "Administrative access" },
+        { action_id: "execute", display_name: "Execute", risk_level: "high", resource_type: "function", requires_human_approval: true, description: "Run code or trigger operation" },
+      ];
+      const actionResults: any[] = [];
+      for (const a of actions) {
+        const res = await postJson(`${GW}/actions/register`, a);
+        actionResults.push(res);
+      }
+      setResults(prev => ({
+        ...prev,
+        actions: {
+          registered: actionResults.filter(r => r.status === "registered").length,
+          total: actions.length,
+        },
+      }));
+
+      // Step 3: Set up policy with bindings
+      setStep(3);
+      const currentPolicy = await fetch(`${GW}/policy`).then(r => r.json());
+      const existingRules = currentPolicy.rules || [];
+      // Add binding rules (agent will be bound after spawn)
+      const policyData = await postJson(`${GW}/policy`, {
+        method: "PUT",
+      });
+      // We keep the default policy (allowlist + resource_scope + rate_limit) which
+      // already denies delete/admin/execute. The point is the demo shows the
+      // default policy catching the rogue actions.
+      setResults(prev => ({
+        ...prev,
+        policy: {
+          rules: existingRules.length,
+          hash: currentPolicy.policy_hash?.slice(0, 24),
+        },
+      }));
+
+      // Step 4: Spawn a rogue agent
+      setStep(4);
       const spawnResp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
       if (!spawnResp.ok) throw new Error("Failed to spawn agent");
       const spawned = await spawnResp.json();
@@ -727,54 +803,46 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       setRogueAgent(agentId);
       setResults(prev => ({ ...prev, spawn: spawned }));
 
-      // Step 2: Rogue burst — 4 rapid unauthorized actions (delete, admin, execute, drop)
-      setStep(2);
+      // Step 5: Rogue burst — 4 rapid unauthorized actions against the registered resource
+      setStep(5);
       const rogueActions = ["delete", "admin", "execute", "drop"];
       const burstResults: any[] = [];
       for (const action of rogueActions) {
-        const r = await fetch(`${BASE}/api/agents/demo-agent/attack-resource`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agent_id: agentId, action, resource: "staging-analytics-db" }),
+        const r = await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, {
+          agent_id: agentId, action, resource: "staging-analytics-db",
         });
-        burstResults.push(await r.json());
+        burstResults.push(r);
       }
       setResults(prev => ({ ...prev, rogue: { actions: rogueActions, denials: burstResults.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: burstResults.length } }));
 
-      // Step 3: Trigger Auditor to process the rogue receipts
-      setStep(3);
-      const auditResp = await fetch(`${BASE}/api/agents/auditor/audit-tick`, { method: "POST" });
-      const auditData = await auditResp.json();
+      // Step 6: Trigger Auditor
+      setStep(6);
+      const auditData = await postJson(`${BASE}/api/agents/auditor/audit-tick`, {});
       setResults(prev => ({ ...prev, auditor: auditData }));
 
-      // Step 4: Trigger Investigation on the rogue agent
-      setStep(4);
-      const invResp = await fetch(`${BASE}/api/agents/investigator/investigate`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } }),
+      // Step 7: Trigger Investigation
+      setStep(7);
+      const invData = await postJson(`${BASE}/api/agents/investigator/investigate`, {
+        tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId },
       });
-      const invData = await invResp.json();
       if (invData.error) { setError(`Investigator: ${invData.error}`); setStep(0); return; }
       setResults(prev => ({ ...prev, investigator: invData }));
 
-      const severity = invData.incident?.severity || invData.severity || "INFO";
       const incidentId = invData.incident?.incident_id || invData.incident_id;
 
-      // Step 5: Trigger Isolator
-      setStep(5);
-      const isoResp = await fetch(`${BASE}/api/agents/isolator/isolate`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: "hackathon-demo", trigger: { incident_id: incidentId } }),
+      // Step 8: Trigger Isolator
+      setStep(8);
+      const isoData = await postJson(`${BASE}/api/agents/isolator/isolate`, {
+        tenant: "hackathon-demo", trigger: { incident_id: incidentId },
       });
-      const isoData = await isoResp.json();
       setResults(prev => ({ ...prev, isolator: isoData }));
 
-      // Step 6: Trigger Recommender
-      setStep(6);
-      const recResp = await fetch(`${BASE}/api/agents/recommender/recommend-tick`, { method: "POST" });
-      const recData = await recResp.json();
+      // Step 9: Trigger Recommender
+      setStep(9);
+      const recData = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
       setResults(prev => ({ ...prev, recommender: recData }));
 
-      setStep(7);
+      setStep(10);
     } catch (e: any) {
       setError(e.message || "Pipeline failed");
       setStep(0);
@@ -782,15 +850,18 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   }
 
   const STEPS = [
-    { id: "spawn", label: "Spawn Rogue", icon: Server, idx: 1 },
-    { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 2 },
-    { id: "auditor", label: "Auditor", icon: Eye, idx: 3 },
-    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 4 },
-    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 5 },
-    { id: "recommender", label: "Recommender", icon: Brain, idx: 6 },
+    { id: "resources", label: "Resources", icon: Database, idx: 1 },
+    { id: "actions", label: "Actions", icon: Shield, idx: 2 },
+    { id: "policy", label: "Policy", icon: Shield, idx: 3 },
+    { id: "spawn", label: "Spawn Rogue", icon: Server, idx: 4 },
+    { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 5 },
+    { id: "auditor", label: "Auditor", icon: Eye, idx: 6 },
+    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 7 },
+    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 8 },
+    { id: "recommender", label: "Recommender", icon: Brain, idx: 9 },
   ];
 
-  const running = step > 0 && step < 7;
+  const running = step > 0 && step < 10;
 
   return (
     <Card>
@@ -798,7 +869,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-semibold">Simulate Full Pipeline</h3>
-            <p className="text-[11px] text-muted-foreground">Spawns a rogue agent, fires 4 unauthorized actions, then runs all 6 agents in sequence.</p>
+            <p className="text-[11px] text-muted-foreground">Registers resources (with live verification), actions, and policy — then spawns a rogue agent, fires unauthorized actions, and runs all 6 agents.</p>
           </div>
           <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2 text-xs" onClick={runPipeline} disabled={running}>
             {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
@@ -821,11 +892,36 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
             ))}
           </div>
         )}
-        {rogueAgent && step >= 2 && (
+        {rogueAgent && step >= 5 && (
           <p className="text-[11px] text-muted-foreground mb-2">Rogue agent: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{rogueAgent}</code></p>
         )}
-        {step === 7 && (
+        {step === 10 && (
           <div className="space-y-2">
+            {/* Setup results */}
+            {results.resources && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
+                <Database className="w-3.5 h-3.5 text-blue-600" />
+                <span className="font-medium">Resources:</span>
+                <Badge className="text-[10px] bg-blue-600/15 text-blue-700 border-blue-600/20">{results.resources.registered} registered</Badge>
+                <Badge className="text-[10px] bg-emerald-600/15 text-emerald-700 border-emerald-600/20">{results.resources.verified} verified</Badge>
+              </div>
+            )}
+            {results.actions && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
+                <Shield className="w-3.5 h-3.5 text-amber-600" />
+                <span className="font-medium">Actions:</span>
+                <Badge className="text-[10px]" variant="outline">{results.actions.registered} registered</Badge>
+              </div>
+            )}
+            {results.policy && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
+                <Shield className="w-3.5 h-3.5 text-purple-600" />
+                <span className="font-medium">Policy:</span>
+                <Badge className="text-[10px]" variant="outline">{results.policy.rules} rules active</Badge>
+                <span className="text-muted-foreground font-[var(--font-geist-mono)] text-[10px]">{results.policy.hash}...</span>
+              </div>
+            )}
+            {/* Attack results */}
             {results.rogue && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
                 <ShieldOff className="w-3.5 h-3.5 text-rose-600" />
