@@ -62,23 +62,73 @@ function VerificationBadge({ status, reason }: { status: string; reason?: string
 
 // ─── Register Resource Form ─────────────────────────────────────────────────
 
+const INPUT_CLS = "w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2";
+const MONO_INPUT_CLS = `${INPUT_CLS} font-[var(--font-geist-mono)] text-xs`;
+
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [resourceType, setResourceType] = useState("");
   const [owner, setOwner] = useState("");
+  const [reachabilityUrl, setReachabilityUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<any>(null);
+
+  // Type-specific metadata fields
+  const [engine, setEngine] = useState("");
+  const [connectionString, setConnectionString] = useState("");
+  const [provider, setProvider] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [instance, setInstance] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [authType, setAuthType] = useState("");
+  const [bucket, setBucket] = useState("");
+  const [prefix, setPrefix] = useState("");
+  const [contentClassification, setContentClassification] = useState("");
+  const [topic, setTopic] = useState("");
+  const [functionName, setFunctionName] = useState("");
+  const [region, setRegion] = useState("");
 
   // Auto-generate resource_id from display name
   const resourceId = displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 256);
   const nameValid = displayName.trim().length > 0;
   const idValid = resourceId.length > 0;
 
+  function buildMetadata(): Record<string, string> | undefined {
+    const m: Record<string, string> = {};
+    if (resourceType === "db") {
+      if (engine) m.engine = engine;
+      if (connectionString) m.connection_string = connectionString;
+      if (provider) m.provider = provider;
+      if (projectId) m.project_id = projectId;
+      if (instance) m.instance = instance;
+    } else if (resourceType === "api") {
+      if (baseUrl) m.base_url = baseUrl;
+      if (authType) m.auth_type = authType;
+    } else if (resourceType === "storage") {
+      if (bucket) m.bucket = bucket;
+      if (provider) m.provider = provider;
+      if (prefix) m.prefix = prefix;
+      if (projectId) m.project_id = projectId;
+      if (contentClassification) m.content_classification = contentClassification;
+    } else if (resourceType === "queue") {
+      if (topic) m.topic = topic;
+      if (provider) m.provider = provider;
+      if (projectId) m.project_id = projectId;
+    } else if (resourceType === "function") {
+      if (functionName) m.function_name = functionName;
+      if (provider) m.provider = provider;
+      if (projectId) m.project_id = projectId;
+      if (region) m.region = region;
+    }
+    return Object.keys(m).length > 0 ? m : undefined;
+  }
+
   async function handleSubmit() {
     setError(""); setLoading(true);
     try {
+      const metadata = buildMetadata();
       const resp = await fetch(`${BASE}/api/agents/gateway/resources/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -88,6 +138,8 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           ...(description && { description }),
           ...(resourceType && { resource_type: resourceType }),
           ...(owner && { owner }),
+          ...(reachabilityUrl && { reachability_url: reachabilityUrl }),
+          ...(metadata && { metadata }),
         }),
       });
       const data = await resp.json();
@@ -102,8 +154,11 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   function reset() {
-    setDisplayName(""); setDescription("");
-    setResourceType(""); setOwner(""); setSuccess(null); setError("");
+    setDisplayName(""); setDescription(""); setResourceType(""); setOwner("");
+    setReachabilityUrl(""); setSuccess(null); setError("");
+    setEngine(""); setConnectionString(""); setProvider(""); setProjectId("");
+    setInstance(""); setBaseUrl(""); setAuthType(""); setBucket(""); setPrefix("");
+    setContentClassification(""); setTopic(""); setFunctionName(""); setRegion("");
   }
 
   if (success) {
@@ -198,6 +253,200 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
             value={description} onChange={e => setDescription(e.target.value)}
           />
         </div>
+
+        {/* Type-specific metadata fields */}
+        {resourceType === "db" && (
+          <div className="space-y-3 rounded-md border border-zinc-200 dark:border-zinc-800 p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Database Details</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Engine</label>
+                <select className={INPUT_CLS} value={engine} onChange={e => setEngine(e.target.value)}>
+                  <option value="">Select engine</option>
+                  <option value="postgresql">PostgreSQL</option>
+                  <option value="mysql">MySQL</option>
+                  <option value="firestore">Firestore</option>
+                  <option value="bigquery">BigQuery</option>
+                  <option value="cloudsql">Cloud SQL</option>
+                  <option value="alloydb">AlloyDB</option>
+                  <option value="mongodb">MongoDB</option>
+                  <option value="redis">Redis</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Provider</label>
+                <select className={INPUT_CLS} value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="">Select provider</option>
+                  <option value="firestore">GCP Firestore (live verification)</option>
+                  <option value="cloudsql">GCP Cloud SQL (live verification)</option>
+                  <option value="self-hosted">Self-hosted</option>
+                  <option value="aws_rds">AWS RDS</option>
+                  <option value="azure_sql">Azure SQL</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Connection String</label>
+                <input className={MONO_INPUT_CLS} type="password" placeholder="postgresql://user:pass@host:5432/dbname" value={connectionString} onChange={e => setConnectionString(e.target.value)} />
+                <p className="text-[10px] text-muted-foreground">Recorded as metadata. Not used for live connections.</p>
+              </div>
+              {(provider === "firestore" || provider === "cloudsql") && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">GCP Project ID</label>
+                  <input className={MONO_INPUT_CLS} placeholder="my-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} />
+                  <p className="text-[10px] text-emerald-600">Enables live verification via GCP API</p>
+                </div>
+              )}
+              {provider === "cloudsql" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Instance Name</label>
+                  <input className={MONO_INPUT_CLS} placeholder="my-instance" value={instance} onChange={e => setInstance(e.target.value)} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {resourceType === "api" && (
+          <div className="space-y-3 rounded-md border border-zinc-200 dark:border-zinc-800 p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Details</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Base URL</label>
+                <input className={MONO_INPUT_CLS} placeholder="https://api.example.com/v1" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Auth Type</label>
+                <select className={INPUT_CLS} value={authType} onChange={e => setAuthType(e.target.value)}>
+                  <option value="">Select auth type</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="api_key">API Key</option>
+                  <option value="oauth2">OAuth 2.0</option>
+                  <option value="iam">GCP IAM</option>
+                  <option value="none">None (public)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {resourceType === "storage" && (
+          <div className="space-y-3 rounded-md border border-zinc-200 dark:border-zinc-800 p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Storage Details</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Provider</label>
+                <select className={INPUT_CLS} value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="">Select provider</option>
+                  <option value="gcs">Google Cloud Storage (live verification)</option>
+                  <option value="s3">AWS S3</option>
+                  <option value="azure_blob">Azure Blob Storage</option>
+                  <option value="sharepoint">SharePoint</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Bucket / Container</label>
+                <input className={MONO_INPUT_CLS} placeholder="my-bucket-name" value={bucket} onChange={e => setBucket(e.target.value)} />
+                {provider === "gcs" && bucket && <p className="text-[10px] text-emerald-600">GCS bucket will be verified via Google APIs</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Path Prefix</label>
+                <input className={MONO_INPUT_CLS} placeholder="data/customer/" value={prefix} onChange={e => setPrefix(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Content Classification</label>
+                <select className={INPUT_CLS} value={contentClassification} onChange={e => setContentClassification(e.target.value)}>
+                  <option value="">Select classification</option>
+                  <option value="public">Public</option>
+                  <option value="internal">Internal</option>
+                  <option value="confidential">Confidential</option>
+                  <option value="pii">PII (Personally Identifiable Information)</option>
+                  <option value="phi">PHI (Protected Health Information)</option>
+                  <option value="regulated">Regulated (SOX/SEC/HIPAA)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {resourceType === "queue" && (
+          <div className="space-y-3 rounded-md border border-zinc-200 dark:border-zinc-800 p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Queue / Event Stream Details</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Provider</label>
+                <select className={INPUT_CLS} value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="">Select provider</option>
+                  <option value="pubsub">Google Pub/Sub (live verification)</option>
+                  <option value="kafka">Apache Kafka</option>
+                  <option value="sqs">AWS SQS</option>
+                  <option value="rabbitmq">RabbitMQ</option>
+                  <option value="eventbridge">AWS EventBridge</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Topic / Queue Name</label>
+                <input className={MONO_INPUT_CLS} placeholder="my-topic-name" value={topic} onChange={e => setTopic(e.target.value)} />
+              </div>
+              {provider === "pubsub" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">GCP Project ID</label>
+                  <input className={MONO_INPUT_CLS} placeholder="my-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} />
+                  {topic && projectId && <p className="text-[10px] text-emerald-600">Pub/Sub topic will be verified via Google APIs</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {resourceType === "function" && (
+          <div className="space-y-3 rounded-md border border-zinc-200 dark:border-zinc-800 p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Function / Compute Details</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Provider</label>
+                <select className={INPUT_CLS} value={provider} onChange={e => setProvider(e.target.value)}>
+                  <option value="">Select provider</option>
+                  <option value="cloud_functions">GCP Cloud Functions (live verification)</option>
+                  <option value="cloud_run_jobs">GCP Cloud Run Jobs (live verification)</option>
+                  <option value="lambda">AWS Lambda</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Function / Job Name</label>
+                <input className={MONO_INPUT_CLS} placeholder="process-invoice" value={functionName} onChange={e => setFunctionName(e.target.value)} />
+              </div>
+              {(provider === "cloud_functions" || provider === "cloud_run_jobs") && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">GCP Project ID</label>
+                    <input className={MONO_INPUT_CLS} placeholder="my-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Region</label>
+                    <input className={MONO_INPUT_CLS} placeholder="us-central1" value={region} onChange={e => setRegion(e.target.value)} />
+                    {functionName && projectId && region && <p className="text-[10px] text-emerald-600">Function will be verified via GCP API</p>}
+                  </div>
+                </>
+              )}
+              {provider === "lambda" && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">AWS Region</label>
+                  <input className={MONO_INPUT_CLS} placeholder="us-east-1" value={region} onChange={e => setRegion(e.target.value)} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Reachability URL — shown for all types */}
+        {resourceType && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Reachability URL <span className="text-xs text-muted-foreground">(optional)</span></label>
+            <input className={MONO_INPUT_CLS} type="url" placeholder="https://my-resource.example.com/health" value={reachabilityUrl} onChange={e => setReachabilityUrl(e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">If provided, the Gateway probes this URL to confirm the resource is reachable. Overrides metadata-based verification.</p>
+          </div>
+        )}
+
         {error && (
           <div className="rounded-md border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 p-3">
             <p className="text-sm text-rose-700 dark:text-rose-400">{error}</p>
