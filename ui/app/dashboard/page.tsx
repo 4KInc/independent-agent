@@ -623,13 +623,30 @@ function ArtifactAnchoring() {
   const [anchors, setAnchors] = useState<any[]>([]);
   const [logData, setLogData] = useState<any>(null);
   const [expanded, setExpanded] = useState(false);
+  const [anchoring, setAnchoring] = useState(false);
+  const [anchorResult, setAnchorResult] = useState<any>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     fetch(`${BASE}/api/agents/gateway/anchors`).then(r => r.json()).then(d => {
       setAnchors(d.on_chain_anchors || []);
     }).catch(() => {});
     fetch(`${BASE}/api/agents/gateway/artifacts/log?limit=10`).then(r => r.json()).then(setLogData).catch(() => {});
   }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function triggerAnchor() {
+    setAnchoring(true); setAnchorResult(null);
+    try {
+      const resp = await fetch(`${BASE}/api/agents/gateway/anchors/trigger`, { method: "POST" });
+      const data = await resp.json();
+      setAnchorResult(data);
+      if (data.status === "anchored") refresh();
+    } catch (e: any) {
+      setAnchorResult({ status: "error", reason: e.message });
+    }
+    setAnchoring(false);
+  }
 
   const latest = anchors[0];
   const artifactCount = logData?.head_seq || 0;
@@ -645,14 +662,45 @@ function ArtifactAnchoring() {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-          <Anchor className="w-3 h-3" /> Artifact Anchoring
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+            <Anchor className="w-3 h-3" /> Artifact Anchoring
+          </CardTitle>
+          <Button
+            variant="ghost" size="sm"
+            className="h-6 text-[10px] px-2 gap-1"
+            onClick={triggerAnchor}
+            disabled={anchoring}
+          >
+            {anchoring ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Anchor className="w-2.5 h-2.5" />}
+            {anchoring ? "Anchoring..." : "Anchor Now"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="text-xs text-muted-foreground">
           {artifactCount} artifacts in unified log
         </div>
+
+        {anchorResult && anchorResult.status === "anchored" && (
+          <div className="rounded border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-2 space-y-1">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Anchored {anchorResult.artifact_count} artifacts to Base L2</span>
+            </div>
+            <a href={anchorResult.basescan_url} target="_blank" rel="noopener noreferrer"
+               className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline">
+              <ExternalLink className="w-2.5 h-2.5" />
+              View on BaseScan
+            </a>
+          </div>
+        )}
+        {anchorResult && anchorResult.status === "skipped" && (
+          <p className="text-[10px] text-amber-600">{anchorResult.reason}</p>
+        )}
+        {anchorResult && anchorResult.status === "error" && (
+          <p className="text-[10px] text-rose-600">{anchorResult.reason}</p>
+        )}
 
         {latest ? (
           <div className="space-y-1.5">
@@ -676,7 +724,7 @@ function ArtifactAnchoring() {
             </div>
           </div>
         ) : (
-          <p className="text-[10px] text-muted-foreground">No on-chain anchors yet. Anchoring triggers every 10 artifacts or hourly.</p>
+          <p className="text-[10px] text-muted-foreground">No on-chain anchors yet. Click "Anchor Now" or wait for the scheduled threshold (10 artifacts or 1 hour).</p>
         )}
 
         {logData?.entries?.length > 0 && (
