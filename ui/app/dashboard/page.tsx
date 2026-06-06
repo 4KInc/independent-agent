@@ -895,31 +895,49 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     return spawned.agent_id;
   }
 
-  async function runStep5_Burst(agentId: string) {
+  async function runStep5_Bind(agentId: string) {
+    // Create a binding: this agent CAN read staging-analytics-db
+    const pol = await fetch(`${GW}/policy`).then(r => r.json());
+    const rules = pol.rules || [];
+    const bindingRule = {
+      id: `bind-${agentId}-read-staging-analytics-db`.slice(0, 64),
+      type: "agent_binding",
+      config: { agent_id: agentId, action_id: "read", resource_id: "staging-analytics-db" },
+    };
+    rules.push(bindingRule);
+    await fetch(`${GW}/policy`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: pol.version || "1", rules, require_resource_registration: pol.require_resource_registration }),
+    });
+    setResults(prev => ({ ...prev, binding: { agent_id: agentId, action: "read", resource: "staging-analytics-db" } }));
+  }
+
+  async function runStep6_Burst(agentId: string) {
     const acts = ["delete", "admin", "execute", "drop"];
     const br: any[] = [];
     for (const a of acts) { br.push(await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, { agent_id: agentId, action: a, resource: "staging-analytics-db" })); }
     setResults(prev => ({ ...prev, rogue: { actions: acts, denials: br.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: br.length } }));
   }
 
-  async function runStep6_Audit() {
+  async function runStep7_Audit() {
     const d = await postJson(`${BASE}/api/agents/auditor/audit-tick`, {});
     setResults(prev => ({ ...prev, auditor: d }));
   }
 
-  async function runStep7_Investigate(agentId: string) {
+  async function runStep8_Investigate(agentId: string) {
     const d = await postJson(`${BASE}/api/agents/investigator/investigate`, { tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } });
     if (d.error) throw new Error(`Investigator: ${d.error}`);
     setResults(prev => ({ ...prev, investigator: d }));
     return d.incident?.incident_id || d.incident_id;
   }
 
-  async function runStep8_Isolate(incidentId: string) {
+  async function runStep9_Isolate(incidentId: string) {
     const d = await postJson(`${BASE}/api/agents/isolator/isolate`, { tenant: "hackathon-demo", trigger: { incident_id: incidentId } });
     setResults(prev => ({ ...prev, isolator: d }));
   }
 
-  async function runStep9_Recommend() {
+  async function runStep10_Recommend() {
     const d = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
     setResults(prev => ({ ...prev, recommender: d }));
   }
@@ -932,12 +950,13 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       setStep(2); await runStep2_Actions();
       setStep(3); await runStep3_Policy();
       setStep(4); const agentId = await runStep4_Spawn();
-      setStep(5); await runStep5_Burst(agentId);
-      setStep(6); await runStep6_Audit();
-      setStep(7); const incidentId = await runStep7_Investigate(agentId);
-      setStep(8); await runStep8_Isolate(incidentId);
-      setStep(9); await runStep9_Recommend();
-      setStep(10);
+      setStep(5); await runStep5_Bind(agentId);
+      setStep(6); await runStep6_Burst(agentId);
+      setStep(7); await runStep7_Audit();
+      setStep(8); const incidentId = await runStep8_Investigate(agentId);
+      setStep(9); await runStep9_Isolate(incidentId);
+      setStep(10); await runStep10_Recommend();
+      setStep(11);
     } catch (e: any) { setError(e.message || "Pipeline failed"); setStep(0); }
   }
 
@@ -950,15 +969,16 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       if (nextStep === 1) { setResults({}); setRogueAgent(""); await runStep1_Resources(); }
       else if (nextStep === 2) await runStep2_Actions();
       else if (nextStep === 3) await runStep3_Policy();
-      else if (nextStep === 4) { const id = await runStep4_Spawn(); /* stored in rogueAgent state */ }
-      else if (nextStep === 5) await runStep5_Burst(rogueAgent);
-      else if (nextStep === 6) await runStep6_Audit();
-      else if (nextStep === 7) { await runStep7_Investigate(rogueAgent); }
-      else if (nextStep === 8) {
+      else if (nextStep === 4) await runStep4_Spawn();
+      else if (nextStep === 5) await runStep5_Bind(rogueAgent);
+      else if (nextStep === 6) await runStep6_Burst(rogueAgent);
+      else if (nextStep === 7) await runStep7_Audit();
+      else if (nextStep === 8) await runStep8_Investigate(rogueAgent);
+      else if (nextStep === 9) {
         const incId = results.investigator?.incident?.incident_id || results.investigator?.incident_id;
-        if (incId) await runStep8_Isolate(incId); else throw new Error("No incident ID from Investigator");
+        if (incId) await runStep9_Isolate(incId); else throw new Error("No incident ID from Investigator");
       }
-      else if (nextStep === 9) { await runStep9_Recommend(); setStep(10); }
+      else if (nextStep === 10) { await runStep10_Recommend(); setStep(11); }
     } catch (e: any) { setError(e.message || "Step failed"); setStep(nextStep - 1); }
     setStepRunning(false);
   }
@@ -970,15 +990,16 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     { id: "actions", label: "Actions", icon: Shield, idx: 2 },
     { id: "policy", label: "Policy", icon: Shield, idx: 3 },
     { id: "spawn", label: "Spawn Rogue", icon: Server, idx: 4 },
-    { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 5 },
-    { id: "auditor", label: "Auditor", icon: Eye, idx: 6 },
-    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 7 },
-    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 8 },
-    { id: "recommender", label: "Recommender", icon: Brain, idx: 9 },
+    { id: "binding", label: "Bind Policy", icon: Link, idx: 5 },
+    { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 6 },
+    { id: "auditor", label: "Auditor", icon: Eye, idx: 7 },
+    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 8 },
+    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 9 },
+    { id: "recommender", label: "Recommender", icon: Brain, idx: 10 },
   ];
 
-  const running = mode === "auto" && step > 0 && step < 10;
-  const manualDone = step >= 10;
+  const running = mode === "auto" && step > 0 && step < 11;
+  const manualDone = step >= 11;
   const nextStepInfo = STEPS[step] || null;
 
   return (
@@ -1038,7 +1059,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
         {rogueAgent && step >= 5 && (
           <p className="text-[11px] text-muted-foreground mb-2">Rogue agent: <code className="font-[var(--font-geist-mono)] bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{rogueAgent}</code></p>
         )}
-        {step === 10 && (
+        {step === 11 && (
           <div className="space-y-2">
             {/* Setup results */}
             {results.resources && (
@@ -1062,6 +1083,14 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
                 <span className="font-medium">Policy:</span>
                 <Badge className="text-[10px]" variant="outline">{results.policy.rules} rules active</Badge>
                 <span className="text-muted-foreground font-[var(--font-geist-mono)] text-[10px]">{results.policy.hash}...</span>
+              </div>
+            )}
+            {results.binding && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md border text-xs">
+                <Link className="w-3.5 h-3.5 text-blue-600" />
+                <span className="font-medium">Binding:</span>
+                <Badge className="text-[10px] bg-blue-600/15 text-blue-700 border-blue-600/20">{results.binding.agent_id}</Badge>
+                <span className="text-muted-foreground">can <strong>{results.binding.action}</strong> on <strong>{results.binding.resource}</strong></span>
               </div>
             )}
             {/* Attack results */}
