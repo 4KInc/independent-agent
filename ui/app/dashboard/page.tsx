@@ -65,21 +65,100 @@ function AgentCard({ agent, health, kid, selected, onClick }: { agent: AgentInfo
 // --- Agent Output Views ---
 function GatewayView() {
   const [chain, setChain] = useState<any>(null);
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+  const [explanation, setExplanation] = useState<any>(null);
+  const [explaining, setExplaining] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<any>(null);
+  const [verifying, setVerifying] = useState(false);
+
   useEffect(() => { fetch(`${BASE}/api/chain`).then(r => r.json()).then(setChain).catch(() => {}); }, []);
   const receipts = (chain?.receipts || []).slice().reverse().slice(0, 25);
+
+  const handleExplain = async (seq: number) => {
+    setSelectedSeq(seq);
+    setExplaining(true);
+    setExplanation(null);
+    try {
+      const resp = await fetch(`${BASE}/api/agents/gateway/chain/${seq}/explain`);
+      setExplanation(await resp.json());
+    } catch { setExplanation({ explanation: "Could not reach Gemini." }); }
+    setExplaining(false);
+  };
+
+  const handleVerifyChain = async () => {
+    if (!chain?.receipts?.length) return;
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const resp = await fetch(`${BASE}/api/agents/gateway/verify-chain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receipts: chain.receipts }),
+      });
+      setVerifyResult(await resp.json());
+    } catch { setVerifyResult({ receipt_integrity: "ERROR", chain_validity: "ERROR" }); }
+    setVerifying(false);
+  };
+
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">Recent Receipts</h3>
-      {receipts.length === 0 && <p className="text-sm text-muted-foreground">No receipts yet. Try the Compliant Agent tab to generate some.</p>}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Recent Receipts</h3>
+        <Button variant="outline" size="sm" onClick={handleVerifyChain} disabled={verifying} className="gap-1.5 text-xs h-7">
+          {verifying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+          Verify Chain
+        </Button>
+      </div>
+
+      {verifyResult && (
+        <div className={`rounded border p-2.5 ${verifyResult.receipt_integrity === "PASS" ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30" : "border-rose-300 bg-rose-50 dark:bg-rose-950/30"}`}>
+          <div className="flex items-center gap-2">
+            {verifyResult.receipt_integrity === "PASS" ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
+            <span className="text-xs font-medium">
+              Integrity: {verifyResult.receipt_integrity} | Chain: {verifyResult.chain_validity} | Errors: {verifyResult.errors?.length || 0}
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Every receipt is Ed25519-signed and hash-chained. Independently verifiable with the public key.
+          </p>
+        </div>
+      )}
+
+      {receipts.length === 0 && <p className="text-sm text-muted-foreground">No receipts yet. Run the pipeline to generate receipts.</p>}
       <div className="space-y-1">
         {receipts.map((r: any, i: number) => {
           const b = r.body || {}; const m = r._meta || {};
+          const seq = parseInt(b.seq || "0");
           return (
-            <div key={i} className="flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-muted/30">
-              <Badge variant="outline" className="text-[10px]">#{b.seq}</Badge>
-              <span className="text-muted-foreground w-20 truncate">{String(b.ts || "").slice(11, 19)}</span>
-              <span className="truncate flex-1">{m.agent_id || "?"}: {m.action || "?"} on {m.resource || "?"}</span>
-              <Badge className={b.decision === "approve" ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]" : "text-[10px]"} variant={b.decision === "deny" ? "destructive" : "default"}>{b.decision}</Badge>
+            <div key={i}>
+              <button onClick={() => handleExplain(seq)} className="w-full flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-muted/30 cursor-pointer text-left">
+                <Badge variant="outline" className="text-[10px]">#{b.seq}</Badge>
+                <span className="text-muted-foreground w-20 truncate">{String(b.ts || "").slice(11, 19)}</span>
+                <span className="truncate flex-1">{m.agent_id || "?"}: {m.action || "?"} on {m.resource || "?"}</span>
+                <Badge className={b.decision === "approve" ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]" : "text-[10px]"} variant={b.decision === "deny" ? "destructive" : "default"}>{b.decision}</Badge>
+                <Brain className="w-3 h-3 text-muted-foreground shrink-0" />
+              </button>
+              {selectedSeq === seq && (
+                <div className="ml-8 mt-1 mb-2 rounded border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-3">
+                  {explaining ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Gemini is analyzing this receipt...
+                    </div>
+                  ) : explanation ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Brain className="w-3 h-3 text-blue-600" />
+                        <span className="text-[10px] font-medium text-blue-700 dark:text-blue-400">Gemini 2.5 Flash via Vertex AI</span>
+                      </div>
+                      <p className="text-xs leading-relaxed">{explanation.explanation}</p>
+                      <div className="text-[10px] text-muted-foreground">
+                        Hash: <code className="font-[var(--font-geist-mono)]">{String(r.receipt_hash || "").slice(0, 24)}...</code> |
+                        Prev: <code className="font-[var(--font-geist-mono)]">{String(b.prev_receipt || "").slice(0, 24)}...</code>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
           );
         })}
@@ -757,12 +836,13 @@ function ArtifactAnchoring() {
 
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
-  // 0=idle, 1=setup resources, 2=setup actions, 3=setup policy, 4=spawn rogue,
-  // 5=rogue burst, 6=auditing, 7=investigating, 8=isolating, 9=recommending, 10=done
+  // 0=idle, 1-9=running steps, 10=done
   const [step, setStep] = useState(0);
   const [results, setResults] = useState<Record<string, any>>({});
   const [error, setError] = useState("");
   const [rogueAgent, setRogueAgent] = useState("");
+  const [mode, setMode] = useState<"auto" | "manual">("auto");
+  const [stepRunning, setStepRunning] = useState(false);
 
   const GW = `${BASE}/api/agents/gateway`;
 
@@ -771,131 +851,119 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     return r.json();
   }
 
+  // Individual step runners (shared by both modes)
+  async function runStep1_Resources() {
+    const resources = [
+      { resource_id: "staging-analytics-db", display_name: "Staging Analytics Database", resource_type: "db",
+        metadata: { engine: "firestore", provider: "firestore", project_id: "quick-catcher-470218-b0" } },
+      { resource_id: "compliance-docs-bucket", display_name: "Compliance Documents", resource_type: "storage",
+        metadata: { bucket: "quick-catcher-470218-b0-auditor-compliance-docs", provider: "gcs" } },
+      { resource_id: "audit-events-topic", display_name: "Audit Events Stream", resource_type: "queue",
+        metadata: { topic: "auditor-conflicts", provider: "pubsub", project_id: "quick-catcher-470218-b0" } },
+      { resource_id: "gateway-health-api", display_name: "Gateway Health API", resource_type: "api",
+        reachability_url: "https://agent-auth-gateway-1031148889398.us-central1.run.app/health" },
+    ];
+    const rr: any[] = [];
+    for (const r of resources) { rr.push(await postJson(`${GW}/resources/register`, r)); }
+    setResults(prev => ({ ...prev, resources: { registered: rr.filter(r => r.status === "registered").length, verified: rr.filter(r => r.verification === "verified").length, total: resources.length, details: rr } }));
+  }
+
+  async function runStep2_Actions() {
+    const actions = [
+      { action_id: "read", display_name: "Read", risk_level: "low", resource_type: "db", description: "Read-only data access" },
+      { action_id: "query", display_name: "Query", risk_level: "low", resource_type: "db", description: "Database query" },
+      { action_id: "delete", display_name: "Delete", risk_level: "high", resource_type: "db", requires_human_approval: true, description: "Destructive: removes data" },
+      { action_id: "admin", display_name: "Admin", risk_level: "critical", resource_type: "db", requires_human_approval: true, description: "Administrative access" },
+      { action_id: "execute", display_name: "Execute", risk_level: "high", resource_type: "function", requires_human_approval: true, description: "Run code or trigger operation" },
+    ];
+    const ar: any[] = [];
+    for (const a of actions) { ar.push(await postJson(`${GW}/actions/register`, a)); }
+    setResults(prev => ({ ...prev, actions: { registered: ar.filter(r => r.status === "registered").length, total: actions.length } }));
+  }
+
+  async function runStep3_Policy() {
+    const pol = await fetch(`${GW}/policy`).then(r => r.json());
+    setResults(prev => ({ ...prev, policy: { rules: (pol.rules || []).length, hash: pol.policy_hash?.slice(0, 24) } }));
+  }
+
+  async function runStep4_Spawn() {
+    const resp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
+    if (!resp.ok) throw new Error("Failed to spawn agent");
+    const spawned = await resp.json();
+    setRogueAgent(spawned.agent_id);
+    setResults(prev => ({ ...prev, spawn: spawned }));
+    return spawned.agent_id;
+  }
+
+  async function runStep5_Burst(agentId: string) {
+    const acts = ["delete", "admin", "execute", "drop"];
+    const br: any[] = [];
+    for (const a of acts) { br.push(await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, { agent_id: agentId, action: a, resource: "staging-analytics-db" })); }
+    setResults(prev => ({ ...prev, rogue: { actions: acts, denials: br.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: br.length } }));
+  }
+
+  async function runStep6_Audit() {
+    const d = await postJson(`${BASE}/api/agents/auditor/audit-tick`, {});
+    setResults(prev => ({ ...prev, auditor: d }));
+  }
+
+  async function runStep7_Investigate(agentId: string) {
+    const d = await postJson(`${BASE}/api/agents/investigator/investigate`, { tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } });
+    if (d.error) throw new Error(`Investigator: ${d.error}`);
+    setResults(prev => ({ ...prev, investigator: d }));
+    return d.incident?.incident_id || d.incident_id;
+  }
+
+  async function runStep8_Isolate(incidentId: string) {
+    const d = await postJson(`${BASE}/api/agents/isolator/isolate`, { tenant: "hackathon-demo", trigger: { incident_id: incidentId } });
+    setResults(prev => ({ ...prev, isolator: d }));
+  }
+
+  async function runStep9_Recommend() {
+    const d = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
+    setResults(prev => ({ ...prev, recommender: d }));
+  }
+
+  // Autopilot: run everything
   async function runPipeline() {
     setStep(1); setResults({}); setError(""); setRogueAgent("");
-
     try {
-      // Step 1: Register resources (with live verification)
-      const resources = [
-        { resource_id: "staging-analytics-db", display_name: "Staging Analytics Database", resource_type: "db",
-          metadata: { engine: "firestore", provider: "firestore", project_id: "quick-catcher-470218-b0" } },
-        { resource_id: "compliance-docs-bucket", display_name: "Compliance Documents", resource_type: "storage",
-          metadata: { bucket: "quick-catcher-470218-b0-auditor-compliance-docs", provider: "gcs" } },
-        { resource_id: "audit-events-topic", display_name: "Audit Events Stream", resource_type: "queue",
-          metadata: { topic: "auditor-conflicts", provider: "pubsub", project_id: "quick-catcher-470218-b0" } },
-        { resource_id: "gateway-health-api", display_name: "Gateway Health API", resource_type: "api",
-          reachability_url: "https://agent-auth-gateway-1031148889398.us-central1.run.app/health" },
-      ];
-      const resourceResults: any[] = [];
-      for (const r of resources) {
-        const res = await postJson(`${GW}/resources/register`, r);
-        resourceResults.push(res);
-      }
-      setResults(prev => ({
-        ...prev,
-        resources: {
-          registered: resourceResults.filter(r => r.status === "registered").length,
-          verified: resourceResults.filter(r => r.verification === "verified").length,
-          total: resources.length,
-          details: resourceResults,
-        },
-      }));
-
-      // Step 2: Register actions
-      setStep(2);
-      const actions = [
-        { action_id: "read", display_name: "Read", risk_level: "low", resource_type: "db", description: "Read-only data access" },
-        { action_id: "query", display_name: "Query", risk_level: "low", resource_type: "db", description: "Database query" },
-        { action_id: "delete", display_name: "Delete", risk_level: "high", resource_type: "db", requires_human_approval: true, description: "Destructive: removes data" },
-        { action_id: "admin", display_name: "Admin", risk_level: "critical", resource_type: "db", requires_human_approval: true, description: "Administrative access" },
-        { action_id: "execute", display_name: "Execute", risk_level: "high", resource_type: "function", requires_human_approval: true, description: "Run code or trigger operation" },
-      ];
-      const actionResults: any[] = [];
-      for (const a of actions) {
-        const res = await postJson(`${GW}/actions/register`, a);
-        actionResults.push(res);
-      }
-      setResults(prev => ({
-        ...prev,
-        actions: {
-          registered: actionResults.filter(r => r.status === "registered").length,
-          total: actions.length,
-        },
-      }));
-
-      // Step 3: Set up policy with bindings
-      setStep(3);
-      const currentPolicy = await fetch(`${GW}/policy`).then(r => r.json());
-      const existingRules = currentPolicy.rules || [];
-      // Add binding rules (agent will be bound after spawn)
-      const policyData = await postJson(`${GW}/policy`, {
-        method: "PUT",
-      });
-      // We keep the default policy (allowlist + resource_scope + rate_limit) which
-      // already denies delete/admin/execute. The point is the demo shows the
-      // default policy catching the rogue actions.
-      setResults(prev => ({
-        ...prev,
-        policy: {
-          rules: existingRules.length,
-          hash: currentPolicy.policy_hash?.slice(0, 24),
-        },
-      }));
-
-      // Step 4: Spawn a rogue agent
-      setStep(4);
-      const spawnResp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
-      if (!spawnResp.ok) throw new Error("Failed to spawn agent");
-      const spawned = await spawnResp.json();
-      const agentId = spawned.agent_id;
-      setRogueAgent(agentId);
-      setResults(prev => ({ ...prev, spawn: spawned }));
-
-      // Step 5: Rogue burst — 4 rapid unauthorized actions against the registered resource
-      setStep(5);
-      const rogueActions = ["delete", "admin", "execute", "drop"];
-      const burstResults: any[] = [];
-      for (const action of rogueActions) {
-        const r = await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, {
-          agent_id: agentId, action, resource: "staging-analytics-db",
-        });
-        burstResults.push(r);
-      }
-      setResults(prev => ({ ...prev, rogue: { actions: rogueActions, denials: burstResults.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: burstResults.length } }));
-
-      // Step 6: Trigger Auditor
-      setStep(6);
-      const auditData = await postJson(`${BASE}/api/agents/auditor/audit-tick`, {});
-      setResults(prev => ({ ...prev, auditor: auditData }));
-
-      // Step 7: Trigger Investigation
-      setStep(7);
-      const invData = await postJson(`${BASE}/api/agents/investigator/investigate`, {
-        tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId },
-      });
-      if (invData.error) { setError(`Investigator: ${invData.error}`); setStep(0); return; }
-      setResults(prev => ({ ...prev, investigator: invData }));
-
-      const incidentId = invData.incident?.incident_id || invData.incident_id;
-
-      // Step 8: Trigger Isolator
-      setStep(8);
-      const isoData = await postJson(`${BASE}/api/agents/isolator/isolate`, {
-        tenant: "hackathon-demo", trigger: { incident_id: incidentId },
-      });
-      setResults(prev => ({ ...prev, isolator: isoData }));
-
-      // Step 9: Trigger Recommender
-      setStep(9);
-      const recData = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
-      setResults(prev => ({ ...prev, recommender: recData }));
-
+      await runStep1_Resources();
+      setStep(2); await runStep2_Actions();
+      setStep(3); await runStep3_Policy();
+      setStep(4); const agentId = await runStep4_Spawn();
+      setStep(5); await runStep5_Burst(agentId);
+      setStep(6); await runStep6_Audit();
+      setStep(7); const incidentId = await runStep7_Investigate(agentId);
+      setStep(8); await runStep8_Isolate(incidentId);
+      setStep(9); await runStep9_Recommend();
       setStep(10);
-    } catch (e: any) {
-      setError(e.message || "Pipeline failed");
-      setStep(0);
-    }
+    } catch (e: any) { setError(e.message || "Pipeline failed"); setStep(0); }
   }
+
+  // Manual: run one step at a time
+  async function runNextStep() {
+    setStepRunning(true); setError("");
+    const nextStep = step + 1;
+    setStep(nextStep);
+    try {
+      if (nextStep === 1) { setResults({}); setRogueAgent(""); await runStep1_Resources(); }
+      else if (nextStep === 2) await runStep2_Actions();
+      else if (nextStep === 3) await runStep3_Policy();
+      else if (nextStep === 4) { const id = await runStep4_Spawn(); /* stored in rogueAgent state */ }
+      else if (nextStep === 5) await runStep5_Burst(rogueAgent);
+      else if (nextStep === 6) await runStep6_Audit();
+      else if (nextStep === 7) { await runStep7_Investigate(rogueAgent); }
+      else if (nextStep === 8) {
+        const incId = results.investigator?.incident?.incident_id || results.investigator?.incident_id;
+        if (incId) await runStep8_Isolate(incId); else throw new Error("No incident ID from Investigator");
+      }
+      else if (nextStep === 9) { await runStep9_Recommend(); setStep(10); }
+    } catch (e: any) { setError(e.message || "Step failed"); setStep(nextStep - 1); }
+    setStepRunning(false);
+  }
+
+  function resetPipeline() { setStep(0); setResults({}); setError(""); setRogueAgent(""); }
 
   const STEPS = [
     { id: "resources", label: "Resources", icon: Database, idx: 1 },
@@ -909,20 +977,47 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     { id: "recommender", label: "Recommender", icon: Brain, idx: 9 },
   ];
 
-  const running = step > 0 && step < 10;
+  const running = mode === "auto" && step > 0 && step < 10;
+  const manualDone = step >= 10;
+  const nextStepInfo = STEPS[step] || null;
 
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold">Simulate Full Pipeline</h3>
-            <p className="text-[11px] text-muted-foreground">Registers resources (with live verification), actions, and policy — then spawns a rogue agent, fires unauthorized actions, and runs all 6 agents.</p>
+            <h3 className="text-sm font-semibold">Pipeline Simulator</h3>
+            <p className="text-[11px] text-muted-foreground">Registers resources, actions, and policy, then spawns a rogue agent, fires unauthorized actions, and runs all 6 agents.</p>
           </div>
-          <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2 text-xs" onClick={runPipeline} disabled={running}>
-            {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
-            {running ? "Running..." : "Run Pipeline"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {step === 0 && (
+              <div className="flex border rounded-md overflow-hidden text-[10px]">
+                <button onClick={() => setMode("auto")} className={`px-2.5 py-1 ${mode === "auto" ? "bg-purple-600 text-white" : "text-muted-foreground hover:bg-muted"}`}>Autopilot</button>
+                <button onClick={() => setMode("manual")} className={`px-2.5 py-1 ${mode === "manual" ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-muted"}`}>Step-by-Step</button>
+              </div>
+            )}
+            {mode === "auto" ? (
+              <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2 text-xs" onClick={runPipeline} disabled={running || manualDone}>
+                {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
+                {running ? "Running..." : manualDone ? "Done" : "Run Pipeline"}
+              </Button>
+            ) : (
+              <div className="flex gap-1.5">
+                {!manualDone && (
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2 text-xs" onClick={runNextStep} disabled={stepRunning}>
+                    {stepRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    {stepRunning ? "Running..." : nextStepInfo ? `Run: ${nextStepInfo.label}` : "Start"}
+                  </Button>
+                )}
+                {step > 0 && (
+                  <Button variant="outline" size="sm" className="text-xs h-8" onClick={resetPipeline}>Reset</Button>
+                )}
+              </div>
+            )}
+            {mode === "auto" && manualDone && (
+              <Button variant="outline" size="sm" className="text-xs h-8" onClick={resetPipeline}>Reset</Button>
+            )}
+          </div>
         </div>
         {error && <p className="text-xs text-rose-600 mb-2">{error}</p>}
         {step > 0 && (
