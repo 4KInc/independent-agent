@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Database, Plus, Copy, CheckCircle2, Loader2, Clock, ChevronRight,
   Shield, Trash2, RefreshCw, FileText, AlertTriangle, Info,
-  Globe, HardDrive, MessageSquare, Zap,
+  Globe, HardDrive, MessageSquare, Zap, ExternalLink,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -466,6 +466,29 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
 
 // ─── Resource Detail (expandable row) ───────────────────────────────────────
 
+function getGcpConsoleUrl(resource: any): { url: string; label: string } | null {
+  const meta = resource.metadata || {};
+  const project = meta.project_id || "quick-catcher-470218-b0";
+  const type = resource.resource_type;
+
+  if (type === "db" && (meta.provider === "firestore" || meta.engine === "firestore")) {
+    return { url: `https://console.cloud.google.com/firestore/databases?project=${project}`, label: "View in Firestore Console" };
+  }
+  if (type === "storage" && meta.provider === "gcs" && meta.bucket) {
+    return { url: `https://console.cloud.google.com/storage/browser/${meta.bucket}?project=${project}`, label: "View in Cloud Storage" };
+  }
+  if (type === "queue" && meta.provider === "pubsub" && meta.topic) {
+    return { url: `https://console.cloud.google.com/cloudpubsub/topic/detail/${meta.topic}?project=${project}`, label: "View in Pub/Sub Console" };
+  }
+  if (type === "api" && resource.reachability_url) {
+    return { url: resource.reachability_url, label: "Open API endpoint" };
+  }
+  if (type === "function" && meta.provider === "cloud_functions" && meta.function_name) {
+    return { url: `https://console.cloud.google.com/functions/details/${meta.region || "us-central1"}/${meta.function_name}?project=${project}`, label: "View in Cloud Functions" };
+  }
+  return null;
+}
+
 function ResourceDetail({ resource, receipts }: { resource: any; receipts: any[] }) {
   const matching = receipts.filter(r => {
     const meta = r._meta || {};
@@ -473,16 +496,37 @@ function ResourceDetail({ resource, receipts }: { resource: any; receipts: any[]
     return meta.resource === resource.resource_id || rrid === resource.resource_id;
   });
 
+  const gcpLink = getGcpConsoleUrl(resource);
+
   return (
     <div className="px-3 pb-3 space-y-3">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      {gcpLink && (
+        <a
+          href={gcpLink.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {gcpLink.label}
+        </a>
+      )}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
         {resource.description && <><span className="text-muted-foreground">Description</span><span>{resource.description}</span></>}
         {resource.resource_type && <><span className="text-muted-foreground">Type</span><span>{resource.resource_type}</span></>}
         {resource.owner && <><span className="text-muted-foreground">Owner</span><span>{resource.owner}</span></>}
         <span className="text-muted-foreground">Version</span><span>{resource.version || 1}</span>
-        <span className="text-muted-foreground">Provenance</span>
-        <Badge variant="outline" className="text-[10px] w-fit">{resource.provenance || "manual"}</Badge>
+        <span className="text-muted-foreground">Verification</span>
+        <VerificationBadge status={resource.verification || resource.verification_status || "skipped"} reason={resource.verification_reason} />
         <span className="text-muted-foreground">Registered</span><span>{resource.registered_at ? new Date(resource.registered_at).toISOString().slice(0, 19) : "—"}</span>
+        {resource.metadata && Object.keys(resource.metadata).length > 0 && (
+          <>
+            <span className="text-muted-foreground">Metadata</span>
+            <code className="font-[var(--font-geist-mono)] text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded break-all">
+              {Object.entries(resource.metadata).map(([k, v]) => `${k}: ${v}`).join(", ")}
+            </code>
+          </>
+        )}
       </div>
       {matching.length > 0 && (
         <div>
