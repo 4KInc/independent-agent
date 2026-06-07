@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Authorization Gateway — Interactive Demo",
-  description: "Independent agent demonstrating cryptographic policy enforcement via MCP",
+  title: "Gate — Cryptographic Governance for AI Agents",
+  description: "Enterprise command center for AI agent authorization, audit, and compliance",
 };
 
 export default function RootLayout({

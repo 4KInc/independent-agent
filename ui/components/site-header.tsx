@@ -36,8 +36,8 @@ export function SiteHeader() {
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="max-w-[1440px] mx-auto flex items-center h-14 px-6 gap-4">
         <Shield className="w-5 h-5 text-primary" />
-        <span className="font-semibold text-sm">Agent Authorization Gateway</span>
-        <span className="text-xs text-muted-foreground hidden sm:inline">Interactive Demo</span>
+        <span className="font-semibold text-sm">Gate</span>
+        <span className="text-xs text-muted-foreground hidden sm:inline">Cryptographic Governance for AI Agents</span>
         <Separator orientation="vertical" className="h-5 mx-1" />
         {NAV_ITEMS.map(({ href, label }) => (
           <a

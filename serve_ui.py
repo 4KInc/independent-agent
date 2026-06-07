@@ -17,13 +17,20 @@ from server.app import app
 static_dir = Path(__file__).parent / "static"
 
 if static_dir.exists():
-    # Serve Next.js pages at clean URLs (e.g. /integrations → integrations.html)
+    # Serve Next.js pages at clean URLs (e.g. /resources → resources.html)
+    # Falls back to index.html for client-side routing
     @app.get("/{page_name}")
     async def serve_page(page_name: str, request: Request):
+        # Skip API and static asset routes
+        if page_name.startswith("_next") or page_name.startswith("api"):
+            return HTMLResponse(status_code=404, content="Not found")
         html_file = static_dir / f"{page_name}.html"
         if html_file.exists():
             return FileResponse(html_file, media_type="text/html")
-        # Fall through to static files mount
+        # SPA fallback: serve index.html and let Next.js client router handle it
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file, media_type="text/html")
         return HTMLResponse(status_code=404, content="Not found")
 
     # Mount static files for assets (_next/, etc.) and index.html
