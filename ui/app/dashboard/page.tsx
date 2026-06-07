@@ -836,13 +836,33 @@ function ArtifactAnchoring() {
 
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
-  // 0=idle, 1-9=running steps, 10=done
-  const [step, setStep] = useState(0);
-  const [results, setResults] = useState<Record<string, any>>({});
+  // Restore state from sessionStorage on mount (survives refresh)
+  const [step, _setStep] = useState(() => {
+    if (typeof window !== "undefined") return parseInt(sessionStorage.getItem("pipeline_step") || "0");
+    return 0;
+  });
+  const [results, setResults] = useState<Record<string, any>>(() => {
+    if (typeof window !== "undefined") try { return JSON.parse(sessionStorage.getItem("pipeline_results") || "{}"); } catch { return {}; }
+    return {};
+  });
   const [error, setError] = useState("");
-  const [rogueAgent, setRogueAgent] = useState("");
-  const [mode, setMode] = useState<"auto" | "manual">("auto");
+  const [rogueAgent, _setRogueAgent] = useState(() => {
+    if (typeof window !== "undefined") return sessionStorage.getItem("pipeline_rogue") || "";
+    return "";
+  });
+  const [mode, setMode] = useState<"auto" | "manual">(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("pipeline_mode") as "auto" | "manual") || "auto";
+    return "auto";
+  });
   const [stepRunning, setStepRunning] = useState(false);
+
+  // Wrap setters to persist to sessionStorage
+  const setStep = (v: number) => { _setStep(v); if (typeof window !== "undefined") sessionStorage.setItem("pipeline_step", String(v)); };
+  const setRogueAgent = (v: string) => { _setRogueAgent(v); if (typeof window !== "undefined") sessionStorage.setItem("pipeline_rogue", v); };
+
+  // Persist results and mode on change
+  useEffect(() => { if (typeof window !== "undefined") sessionStorage.setItem("pipeline_results", JSON.stringify(results)); }, [results]);
+  useEffect(() => { if (typeof window !== "undefined") sessionStorage.setItem("pipeline_mode", mode); }, [mode]);
 
   const GW = `${BASE}/api/agents/gateway`;
 
@@ -864,8 +884,14 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
         reachability_url: "https://agent-auth-gateway-1031148889398.us-central1.run.app/health" },
     ];
     const rr: any[] = [];
-    for (const r of resources) { rr.push(await postJson(`${GW}/resources/register`, r)); }
-    setResults(prev => ({ ...prev, resources: { registered: rr.filter(r => r.status === "registered").length, verified: rr.filter(r => r.verification === "verified").length, total: resources.length, details: rr } }));
+    for (const r of resources) {
+      const resp = await fetch(`${GW}/resources/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r) });
+      const data = await resp.json();
+      // Treat 409 (already exists) as success
+      if (resp.status === 409) { rr.push({ ...data, status: "registered", verification: "exists" }); }
+      else { rr.push(data); }
+    }
+    setResults(prev => ({ ...prev, resources: { registered: rr.filter(r => r.status === "registered").length, verified: rr.filter(r => r.verification === "verified" || r.verification === "exists").length, total: resources.length, details: rr } }));
   }
 
   async function runStep2_Actions() {
@@ -877,7 +903,12 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       { action_id: "execute", display_name: "Execute", risk_level: "high", resource_type: "function", requires_human_approval: true, description: "Run code or trigger operation" },
     ];
     const ar: any[] = [];
-    for (const a of actions) { ar.push(await postJson(`${GW}/actions/register`, a)); }
+    for (const a of actions) {
+      const resp = await fetch(`${GW}/actions/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) });
+      const data = await resp.json();
+      if (resp.status === 409) { ar.push({ ...data, status: "registered" }); }
+      else { ar.push(data); }
+    }
     setResults(prev => ({ ...prev, actions: { registered: ar.filter(r => r.status === "registered").length, total: actions.length } }));
   }
 
@@ -983,7 +1014,15 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     setStepRunning(false);
   }
 
-  function resetPipeline() { setStep(0); setResults({}); setError(""); setRogueAgent(""); }
+  function resetPipeline() {
+    setStep(0); setResults({}); setError(""); setRogueAgent("");
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("pipeline_step");
+      sessionStorage.removeItem("pipeline_results");
+      sessionStorage.removeItem("pipeline_rogue");
+      sessionStorage.removeItem("pipeline_mode");
+    }
+  }
 
   const STEPS = [
     { id: "resources", label: "Resources", icon: Database, idx: 1 },
