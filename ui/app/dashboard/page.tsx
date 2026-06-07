@@ -15,6 +15,43 @@ import { SiteHeader } from "@/components/site-header";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
+// Map compliance document names to their canonical public URLs
+function getDocUrl(source: string): string | null {
+  const s = (source || "").toLowerCase();
+  if (s.includes("owasp") && s.includes("nhi"))
+    return "https://owasp.org/www-project-non-human-identities-top-10/";
+  if (s.includes("nist") && s.includes("rmf"))
+    return "https://www.nist.gov/artificial-intelligence/executive-order-safe-secure-and-trustworthy-artificial-intelligence";
+  if (s.includes("800-53") || s.includes("80053"))
+    return "https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final";
+  if (s.includes("nist") && s.includes("ai"))
+    return "https://www.nist.gov/artificial-intelligence";
+  return null;
+}
+
+function CitationBlock({ citation }: { citation: any }) {
+  const c = citation;
+  const url = getDocUrl(c.source);
+  return (
+    <div className="bg-muted/30 rounded p-3 text-xs space-y-1.5 border-l-2 border-violet-400">
+      <div className="flex items-center gap-2">
+        <span className="font-semibold">{c.source}</span>
+        {c.page && <Badge variant="outline" className="text-[9px]">p. {c.page}</Badge>}
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-300 underline underline-offset-2 flex items-center gap-0.5">
+            View source doc
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+          </a>
+        )}
+      </div>
+      <blockquote className="text-muted-foreground italic border-l-2 border-zinc-300 dark:border-zinc-600 pl-2 whitespace-pre-wrap">
+        "{c.passage}"
+      </blockquote>
+    </div>
+  );
+}
+
 function copyText(t: string) { navigator.clipboard.writeText(t); }
 
 function JsonView({ data }: { data: unknown }) {
@@ -225,10 +262,7 @@ function AuditorView({ pendingAuditId, onAuditIdConsumed }: { pendingAuditId?: s
                 <div className="px-3 pb-3 space-y-2">
                   <p className="text-xs">{b.rationale}</p>
                   {b.citations?.map((c: any, j: number) => (
-                    <div key={j} className="bg-muted/30 rounded p-2 text-xs">
-                      <span className="font-medium">Source: {c.source}</span>{c.page ? `, page ${c.page}` : ""}
-                      <p className="text-muted-foreground mt-1 italic">"{c.passage?.slice(0, 200)}..."</p>
-                    </div>
+                    <CitationBlock key={j} citation={c} />
                   ))}
                   <div className="text-[10px] text-muted-foreground">Signed by: {b.auditor_kid} | Sig: {r.signature?.slice(0, 30)}...</div>
                 </div>
@@ -297,14 +331,17 @@ function RecommenderView({ onNavigateToAudit }: { onNavigateToAudit?: (auditId: 
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Supporting Citations</p>
                     {citations.map((c: any, j: number) => (
-                      <div key={j} className="bg-muted/30 rounded p-2 text-xs mb-1">
-                        <span className="font-medium">Source: {c.source}</span>{c.page ? `, page ${c.page}` : ""}
-                        <p className="text-muted-foreground mt-1 italic">"{c.passage?.slice(0, 200)}..."</p>
-                        <span className="text-[10px] text-muted-foreground">Audit: {c.audit_report_id && onNavigateToAudit ? (
-                          <button onClick={() => onNavigateToAudit(c.audit_report_id)} className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded font-[var(--font-geist-mono)] hover:bg-zinc-300 dark:hover:bg-zinc-700 hover:text-foreground cursor-pointer transition-colors">{c.audit_report_id.slice(0, 12)}</button>
-                        ) : (
-                          <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{c.audit_report_id?.slice(0, 12)}</code>
-                        )}</span>
+                      <div key={j} className="mb-1">
+                        <CitationBlock citation={c} />
+                        {c.audit_report_id && (
+                          <div className="text-[10px] text-muted-foreground mt-1 ml-3">
+                            Audit: {onNavigateToAudit ? (
+                              <button onClick={() => onNavigateToAudit(c.audit_report_id)} className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded font-[var(--font-geist-mono)] hover:bg-zinc-300 dark:hover:bg-zinc-700 hover:text-foreground cursor-pointer transition-colors">{c.audit_report_id.slice(0, 12)}</button>
+                            ) : (
+                              <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{c.audit_report_id?.slice(0, 12)}</code>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -329,6 +366,53 @@ function RecommenderView({ onNavigateToAudit }: { onNavigateToAudit?: (auditId: 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function IncidentCitations({ auditReportIds }: { auditReportIds: string[] }) {
+  const [citations, setCitations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+
+  async function loadCitations() {
+    if (fetched || auditReportIds.length === 0) return;
+    setLoading(true);
+    try {
+      const resp = await fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=500`);
+      const data = await resp.json();
+      const reports = data.reports || [];
+      const matched = reports.filter((r: any) =>
+        auditReportIds.some((id: string) => r.body?.audit_id?.includes(id) || id.includes(r.body?.audit_id))
+      );
+      const allCitations = matched.flatMap((r: any) =>
+        (r.body?.citations || []).map((c: any) => ({ ...c, verdict: r.body?.verdict, receipt_seq: r.body?.receipt_seq }))
+      );
+      setCitations(allCitations);
+    } catch {}
+    setLoading(false);
+    setFetched(true);
+  }
+
+  if (auditReportIds.length === 0) return null;
+
+  return (
+    <div>
+      {!fetched ? (
+        <button onClick={loadCitations} disabled={loading}
+          className="text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 underline underline-offset-2">
+          {loading ? "Loading citations..." : "Show compliance citations from referenced audits"}
+        </button>
+      ) : citations.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Compliance Citations</p>
+          {citations.map((c: any, j: number) => (
+            <CitationBlock key={j} citation={c} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[10px] text-muted-foreground">No citations found in referenced audit reports.</p>
+      )}
     </div>
   );
 }
@@ -424,7 +508,7 @@ function InvestigatorView() {
                 {(evidence.audit_report_ids?.length > 0 || evidence.receipt_seqs?.length > 0) && (
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Evidence References</p>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 mb-2">
                       {evidence.audit_report_ids?.map((id: string, j: number) => (
                         <code key={`a${j}`} className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{id.slice(0, 12)}</code>
                       ))}
@@ -434,6 +518,7 @@ function InvestigatorView() {
                     </div>
                   </div>
                 )}
+                <IncidentCitations auditReportIds={evidence.audit_report_ids || []} />
                 <div className="text-[10px] text-muted-foreground">Signed by: {b.investigator_kid} | Sig: {inc.signature?.slice(0, 30)}...</div>
               </div>
             )}
@@ -591,7 +676,7 @@ function IsolatorView() {
                       <div key={j} className="flex items-start gap-2 text-xs py-1 border-l-2 border-rose-300 dark:border-rose-700 pl-2 mb-1">
                         <Badge className={a.action === "REVOKE_REGISTRATION" ? "bg-rose-600/15 text-rose-600 text-[9px]" : a.action === "RATE_LIMIT_ZERO" ? "bg-amber-600/15 text-amber-600 text-[9px]" : "text-[9px]"} variant="outline">{a.action}</Badge>
                         <span className="font-medium">{a.agent_id}</span>
-                        <span className="text-muted-foreground flex-1">{a.rationale?.slice(0, 100)}</span>
+                        <span className="text-muted-foreground flex-1">{a.rationale}</span>
                         <Badge variant="outline" className="text-[9px]">{a.status}</Badge>
                       </div>
                     ))}
