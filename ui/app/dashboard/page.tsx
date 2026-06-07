@@ -855,6 +855,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     return "auto";
   });
   const [stepRunning, setStepRunning] = useState(false);
+  const [stepProgress, setStepProgress] = useState<string>("");
 
   // Wrap setters to persist to sessionStorage
   const setStep = (v: number) => { _setStep(v); if (typeof window !== "undefined") sessionStorage.setItem("pipeline_step", String(v)); };
@@ -884,17 +885,20 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
         reachability_url: "https://agent-auth-gateway-1031148889398.us-central1.run.app/health" },
     ];
     const rr: any[] = [];
-    for (const r of resources) {
+    for (let i = 0; i < resources.length; i++) {
+      const r = resources[i];
+      setStepProgress(`Verifying ${r.display_name} (${i + 1}/${resources.length})...`);
       const resp = await fetch(`${GW}/resources/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r) });
       const data = await resp.json();
-      // Treat 409 (already exists) as success
       if (resp.status === 409) { rr.push({ ...data, status: "registered", verification: "exists" }); }
       else { rr.push(data); }
     }
+    setStepProgress("");
     setResults(prev => ({ ...prev, resources: { registered: rr.filter(r => r.status === "registered").length, verified: rr.filter(r => r.verification === "verified" || r.verification === "exists").length, total: resources.length, details: rr } }));
   }
 
   async function runStep2_Actions() {
+    setStepProgress("Registering actions with risk levels...");
     const actions = [
       { action_id: "read", display_name: "Read", risk_level: "low", resource_type: "db", description: "Read-only data access" },
       { action_id: "query", display_name: "Query", risk_level: "low", resource_type: "db", description: "Database query" },
@@ -909,6 +913,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       if (resp.status === 409) { ar.push({ ...data, status: "registered" }); }
       else { ar.push(data); }
     }
+    setStepProgress("");
     setResults(prev => ({ ...prev, actions: { registered: ar.filter(r => r.status === "registered").length, total: actions.length } }));
   }
 
@@ -918,10 +923,12 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   }
 
   async function runStep4_Spawn() {
+    setStepProgress("Generating Ed25519 keypair + PoP registration + A2A card + live challenge...");
     const resp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
     if (!resp.ok) throw new Error("Failed to spawn agent");
     const spawned = await resp.json();
     setRogueAgent(spawned.agent_id);
+    setStepProgress("");
     setResults(prev => ({ ...prev, spawn: spawned }));
     return spawned.agent_id;
   }
@@ -947,29 +954,41 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   async function runStep6_Burst(agentId: string) {
     const acts = ["delete", "admin", "execute", "drop"];
     const br: any[] = [];
-    for (const a of acts) { br.push(await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, { agent_id: agentId, action: a, resource: "staging-analytics-db" })); }
+    for (let i = 0; i < acts.length; i++) {
+      setStepProgress(`Attempting ${acts[i]} (${i + 1}/${acts.length})...`);
+      br.push(await postJson(`${BASE}/api/agents/demo-agent/attack-resource`, { agent_id: agentId, action: acts[i], resource: "staging-analytics-db" }));
+    }
+    setStepProgress("");
     setResults(prev => ({ ...prev, rogue: { actions: acts, denials: br.filter(r => r.decision === "deny" || r.gateway_status === 401).length, total: br.length } }));
   }
 
   async function runStep7_Audit() {
+    setStepProgress("Gemini 2.5 Pro analyzing receipts against OWASP + NIST...");
     const d = await postJson(`${BASE}/api/agents/auditor/audit-tick`, {});
+    setStepProgress("");
     setResults(prev => ({ ...prev, auditor: d }));
   }
 
   async function runStep8_Investigate(agentId: string) {
+    setStepProgress("Gemini 2.5 Pro assembling incident timeline + evidence...");
     const d = await postJson(`${BASE}/api/agents/investigator/investigate`, { tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } });
     if (d.error) throw new Error(`Investigator: ${d.error}`);
+    setStepProgress("");
     setResults(prev => ({ ...prev, investigator: d }));
     return d.incident?.incident_id || d.incident_id;
   }
 
   async function runStep9_Isolate(incidentId: string) {
+    setStepProgress("Gemini 2.5 Pro analyzing containment options...");
     const d = await postJson(`${BASE}/api/agents/isolator/isolate`, { tenant: "hackathon-demo", trigger: { incident_id: incidentId } });
+    setStepProgress("");
     setResults(prev => ({ ...prev, isolator: d }));
   }
 
   async function runStep10_Recommend() {
+    setStepProgress("Gemini 2.5 Pro detecting patterns + proposing policy changes...");
     const d = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
+    setStepProgress("");
     setResults(prev => ({ ...prev, recommender: d }));
   }
 
@@ -1015,7 +1034,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   }
 
   function resetPipeline() {
-    setStep(0); setResults({}); setError(""); setRogueAgent("");
+    setStep(0); setResults({}); setError(""); setRogueAgent(""); setStepProgress("");
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("pipeline_step");
       sessionStorage.removeItem("pipeline_results");
@@ -1093,6 +1112,12 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {stepProgress && (
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2 animate-pulse">
+            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+            {stepProgress}
           </div>
         )}
         {rogueAgent && step >= 5 && (
