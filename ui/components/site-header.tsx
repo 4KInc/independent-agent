@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/resources", label: "Resources" },
   { href: "/actions", label: "Actions" },
   { href: "/policies", label: "Policies" },
+  { href: "/verify", label: "Verify" },
   { href: "/integrations", label: "API" },
 ];
 

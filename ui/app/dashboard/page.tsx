@@ -107,6 +107,7 @@ function GatewayView() {
   const [explaining, setExplaining] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [verifying, setVerifying] = useState(false);
+  const [copiedSeq, setCopiedSeq] = useState<number | null>(null);
 
   useEffect(() => { fetch(`${BASE}/api/chain`).then(r => r.json()).then(setChain).catch(() => {}); }, []);
   const receipts = (chain?.receipts || []).slice().reverse().slice(0, 25);
@@ -168,13 +169,22 @@ function GatewayView() {
           const seq = parseInt(b.seq || "0");
           return (
             <div key={i}>
-              <button onClick={() => handleExplain(seq)} className="w-full flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-muted/30 cursor-pointer text-left">
-                <Badge variant="outline" className="text-[10px]">#{b.seq}</Badge>
-                <span className="text-muted-foreground w-20 truncate">{String(b.ts || "").slice(11, 19)}</span>
-                <span className="truncate flex-1">{m.agent_id || "?"}: {m.action || "?"} on {m.resource || "?"}</span>
-                <Badge className={b.decision === "approve" ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]" : "text-[10px]"} variant={b.decision === "deny" ? "destructive" : "default"}>{b.decision}</Badge>
-                <Brain className="w-3 h-3 text-muted-foreground shrink-0" />
-              </button>
+              <div className="w-full flex items-center gap-3 text-xs py-1.5 px-2 rounded hover:bg-muted/30 text-left">
+                <button onClick={() => handleExplain(seq)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                  <Badge variant="outline" className="text-[10px]">#{b.seq}</Badge>
+                  <span className="text-muted-foreground w-20 truncate">{String(b.ts || "").slice(11, 19)}</span>
+                  <span className="truncate flex-1">{m.agent_id || "?"}: {m.action || "?"} on {m.resource || "?"}</span>
+                  <Badge className={b.decision === "approve" ? "bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20 text-[10px]" : "text-[10px]"} variant={b.decision === "deny" ? "destructive" : "default"}>{b.decision}</Badge>
+                  <Brain className="w-3 h-3 text-muted-foreground shrink-0" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); copyText(JSON.stringify(r, null, 2)); setCopiedSeq(seq); setTimeout(() => setCopiedSeq(null), 1500); }}
+                  className="shrink-0 p-1 rounded hover:bg-muted/50 transition-colors flex items-center gap-1"
+                  title="Copy receipt JSON"
+                >
+                  {copiedSeq === seq ? <><CheckCircle2 className="w-3 h-3 text-emerald-600" /><span className="text-[10px] text-emerald-600">Copied</span></> : <Copy className="w-3 h-3 text-muted-foreground hover:text-foreground" />}
+                </button>
+              </div>
               {selectedSeq === seq && (
                 <div className="ml-8 mt-1 mb-2 rounded border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-3">
                   {explaining ? (
