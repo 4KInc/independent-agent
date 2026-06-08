@@ -867,25 +867,55 @@ function ArtifactAnchoring() {
         )}
 
         {latest ? (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Anchored to Base L2</span>
             </div>
-            <a
-              href={latest.basescan_url || `https://basescan.org/tx/${latest.tx_hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[10px] text-blue-600 hover:underline"
-            >
-              <ExternalLink className="w-2.5 h-2.5" />
-              {String(latest.tx_hash || "").slice(0, 18)}...
-            </a>
-            <div className="text-[10px] text-muted-foreground space-y-0.5">
-              <div>Block: {latest.block_number?.toLocaleString()}</div>
-              {latest.artifact_count && <div>Artifacts in batch: {latest.artifact_count}</div>}
-              <div>Root: <code className="font-[var(--font-geist-mono)]">{String(latest.merkle_root || "").slice(0, 20)}...</code></div>
+
+            {/* What this proves */}
+            <div className="rounded border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-2.5 space-y-1.5">
+              <p className="text-[10px] font-medium text-blue-800 dark:text-blue-300">What this proves:</p>
+              <ul className="text-[10px] text-blue-700 dark:text-blue-400 space-y-0.5 list-disc list-inside">
+                <li><strong>{latest.artifact_count || "—"} artifacts</strong> (receipts, audits, incidents) were hashed into a Merkle tree</li>
+                <li>The <strong>Merkle root</strong> was written to Base L2 calldata at block {latest.block_number?.toLocaleString()}</li>
+                <li>No one — not even Gate — can alter these artifacts after anchoring</li>
+                <li>Anyone can recompute the tree from the artifacts and verify the root matches</li>
+              </ul>
             </div>
+
+            {/* Anchor details */}
+            <div className="text-[10px] space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-16">Tx:</span>
+                <a href={latest.basescan_url || `https://basescan.org/tx/${latest.tx_hash}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-blue-600 hover:underline font-[var(--font-geist-mono)]">
+                  {String(latest.tx_hash || "").slice(0, 22)}...
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-16">Block:</span>
+                <span>{latest.block_number?.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-16">Root:</span>
+                <code className="font-[var(--font-geist-mono)] text-muted-foreground">{String(latest.merkle_root || "").slice(0, 32)}...</code>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-16">Artifacts:</span>
+                <span>{latest.artifact_count || "—"} in this batch</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground w-16">Cost:</span>
+                <span>~$0.001 (Base L2 calldata)</span>
+              </div>
+            </div>
+
+            <p className="text-[9px] text-muted-foreground italic border-t pt-1.5">
+              The BaseScan transaction contains the Merkle root in its calldata (click "+ Click to show more" → Input Data on BaseScan to see the raw hex).
+              This root is a cryptographic fingerprint of all {latest.artifact_count || ""} artifacts — changing any single receipt would produce a different root.
+            </p>
           </div>
         ) : (
           <p className="text-[10px] text-muted-foreground">No on-chain anchors yet. Click "Anchor Now" or wait for the scheduled threshold (10 artifacts or 1 hour).</p>
