@@ -919,6 +919,125 @@ function ArtifactAnchoring() {
   );
 }
 
+// --- Agent Risk Heatmap ---
+function AgentRiskHeatmap() {
+  const [agents, setAgents] = useState<any[]>([]);
+  const [auditData, setAuditData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${BASE}/api/agents/gateway/agents`).then(r => r.json()).catch(() => ({ agents: [] })),
+      fetch(`${BASE}/api/agents/auditor/audit-reports?tenant=hackathon-demo&limit=500`).then(r => r.json()).catch(() => ({ reports: [] })),
+      fetch(`${BASE}/api/agents/gateway/chain?limit=500`).then(r => r.json()).catch(() => ({ receipts: [] })),
+      fetch(`${BASE}/api/agents/gateway/agents/liveness`).then(r => r.json()).catch(() => ({ agents: [] })),
+    ]).then(([agentResp, auditResp, chainResp, livenessResp]) => {
+      const receipts = chainResp.receipts || [];
+      const reports = auditResp.reports || [];
+      const livenessMap: Record<string, any> = {};
+      (livenessResp.agents || []).forEach((a: any) => { livenessMap[a.agent_id] = a; });
+
+      const agentList = (agentResp.agents || []).map((a: any) => {
+        const id = a.agent_id;
+        const agentReceipts = receipts.filter((r: any) => r._meta?.agent_id === id);
+        const total = agentReceipts.length;
+        const denials = agentReceipts.filter((r: any) => r.body?.decision === "deny").length;
+        const denialRate = total > 0 ? denials / total : 0;
+
+        // Count audit conflicts for this agent's receipts
+        const agentSeqs = new Set(agentReceipts.map((r: any) => parseInt(r.body?.seq || "0")));
+        const conflicts = reports.filter((r: any) => r.body?.verdict === "CONFLICT" && agentSeqs.has(r.body?.receipt_seq)).length;
+
+        const liveness = livenessMap[id];
+        const livenessState = liveness?.state || a.liveness_state || "UNKNOWN";
+
+        // Compute risk score 0-100
+        let risk = 0;
+        risk += Math.min(denialRate * 60, 60); // up to 60 from denial rate
+        risk += Math.min(conflicts * 10, 25); // up to 25 from conflicts
+        if (livenessState === "SUSPENDED") risk += 15;
+        else if (livenessState === "STALE") risk += 10;
+        else if (livenessState === "WARNING") risk += 5;
+        risk = Math.min(Math.round(risk), 100);
+
+        return {
+          agent_id: id,
+          total,
+          denials,
+          denialRate,
+          conflicts,
+          livenessState,
+          risk,
+        };
+      });
+
+      agentList.sort((a: any, b: any) => b.risk - a.risk);
+      setAgents(agentList);
+      setLoading(false);
+    });
+  }, []);
+
+  function riskColor(risk: number) {
+    if (risk >= 60) return "bg-rose-500";
+    if (risk >= 40) return "bg-orange-500";
+    if (risk >= 20) return "bg-amber-500";
+    if (risk > 0) return "bg-yellow-400";
+    return "bg-emerald-500";
+  }
+
+  function riskLabel(risk: number) {
+    if (risk >= 60) return "HIGH";
+    if (risk >= 40) return "MEDIUM";
+    if (risk >= 20) return "LOW";
+    return "CLEAR";
+  }
+
+  function riskBadgeClass(risk: number) {
+    if (risk >= 60) return "bg-rose-600/15 text-rose-600 border-rose-600/20";
+    if (risk >= 40) return "bg-orange-600/15 text-orange-600 border-orange-600/20";
+    if (risk >= 20) return "bg-amber-600/15 text-amber-600 border-amber-600/20";
+    return "bg-emerald-600/15 text-emerald-600 border-emerald-600/20";
+  }
+
+  if (loading) return null;
+  if (agents.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+          <AlertTriangle className="w-3 h-3" /> Agent Risk Assessment
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">Computed from receipt chain: denial rate, audit conflicts, liveness state</p>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          {agents.map((a: any) => (
+            <div key={a.agent_id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded border hover:bg-muted/10">
+              {/* Risk bar */}
+              <div className="w-16 h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden shrink-0">
+                <div className={`h-full rounded-full transition-all ${riskColor(a.risk)}`} style={{ width: `${a.risk}%` }} />
+              </div>
+              <Badge variant="outline" className={`text-[9px] w-14 justify-center shrink-0 ${riskBadgeClass(a.risk)}`}>
+                {riskLabel(a.risk)}
+              </Badge>
+              <code className="font-[var(--font-geist-mono)] text-[11px] truncate flex-1">{a.agent_id}</code>
+              <span className="text-[10px] text-muted-foreground shrink-0">{a.total} reqs</span>
+              {a.denials > 0 && <Badge variant="outline" className="text-[9px] bg-rose-600/10 text-rose-600">{a.denials} denied</Badge>}
+              {a.conflicts > 0 && <Badge variant="outline" className="text-[9px] bg-amber-600/10 text-amber-600">{a.conflicts} conflicts</Badge>}
+              <span className={`text-[9px] shrink-0 ${
+                a.livenessState === "LIVE" ? "text-emerald-600" :
+                a.livenessState === "SUSPENDED" ? "text-rose-600" :
+                a.livenessState === "STALE" ? "text-orange-600" : "text-zinc-400"
+              }`}>{a.livenessState}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Pipeline Simulation ---
 function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => void }) {
   // Restore state from sessionStorage on mount (survives refresh)
@@ -940,6 +1059,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     return "auto";
   });
   const [stepRunning, setStepRunning] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState<string>("");
 
   // Wrap setters to persist to sessionStorage
@@ -1079,7 +1199,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
 
   // Autopilot: run everything
   async function runPipeline() {
-    setStep(1); setResults({}); setError(""); setRogueAgent("");
+    setStep(1); setResults({}); setError(""); setRogueAgent(""); setAutoRunning(true);
     try {
       await runStep1_Resources();
       setStep(2); await runStep2_Actions();
@@ -1093,6 +1213,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       setStep(10); await runStep10_Recommend();
       setStep(11);
     } catch (e: any) { setError(e.message || "Pipeline failed"); setStep(0); }
+    setAutoRunning(false);
   }
 
   // Manual: run one step at a time
@@ -1141,7 +1262,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     { id: "recommender", label: "Recommender", icon: Brain, idx: 10 },
   ];
 
-  const running = mode === "auto" && step > 0 && step < 11;
+  const running = autoRunning;
   const manualDone = step >= 11;
   const nextStepInfo = STEPS[step] || null;
 
@@ -1178,7 +1299,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
                 )}
               </div>
             )}
-            {mode === "auto" && manualDone && (
+            {mode === "auto" && step > 0 && !running && (
               <Button variant="outline" size="sm" className="text-xs h-8" onClick={resetPipeline}>Reset</Button>
             )}
           </div>
@@ -1189,9 +1310,9 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
             {STEPS.map((s, i) => (
               <div key={s.id} className="flex items-center gap-1">
                 {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
-                <div className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] ${step > s.idx ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400" : step === s.idx ? "border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400" : "border-border text-muted-foreground"}`}>
-                  {step === s.idx && <Loader2 className="w-3 h-3 animate-spin" />}
-                  {step > s.idx && <CheckCircle2 className="w-3 h-3" />}
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] ${step > s.idx || (step === s.idx && !running && !stepRunning) ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400" : step === s.idx ? "border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400" : "border-border text-muted-foreground"}`}>
+                  {step === s.idx && (running || stepRunning) && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {(step > s.idx || (step === s.idx && !running && !stepRunning)) && <CheckCircle2 className="w-3 h-3" />}
                   {step < s.idx && <s.icon className="w-3 h-3" />}
                   {s.label}
                 </div>
@@ -1396,6 +1517,9 @@ export default function DashboardPage() {
             <AgentCard key={a.id} agent={a} health={agentsHealth[a.id]} kid={keys[a.id] || ""} selected={selectedAgent === a.id} onClick={() => setSelectedAgent(a.id)} />
           ))}
         </div>
+
+        {/* Agent Risk Assessment */}
+        <AgentRiskHeatmap />
 
         {/* Pipeline Simulator */}
         <PipelineSimulator onAgentSelect={setSelectedAgent} />
