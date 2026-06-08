@@ -1123,8 +1123,27 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   }
 
   async function runStep3_Policy() {
+    setStepProgress("Loading current policy...");
     const pol = await fetch(`${GW}/policy`).then(r => r.json());
-    setResults(prev => ({ ...prev, policy: { rules: (pol.rules || []).length, hash: pol.policy_hash?.slice(0, 24) } }));
+    const rules = pol.rules || [];
+    const defaults = [
+      { id: "default-allowlist", type: "allowlist", config: { allowed_actions: ["read", "query", "list", "get", "search", "analyze"] } },
+      { id: "default-resource-scope", type: "resource_scope", config: { allowed_resources: ["staging", "dev", "sandbox", "test"], denied_resources: ["production", "prod", "master-key", "admin"] } },
+      { id: "default-rate-limit", type: "rate_limit", config: { max_actions: 10, window_seconds: 60 } },
+    ];
+    const missing = defaults.filter(d => !rules.some((r: any) => r.type === d.type));
+    if (missing.length > 0) {
+      setStepProgress(`Applying ${missing.length} missing system rule${missing.length > 1 ? "s" : ""}...`);
+      const merged = [...rules, ...missing];
+      await fetch(`${GW}/policy`, { method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: pol.version || "1", rules: merged, require_resource_registration: pol.require_resource_registration }) });
+      const updated = await fetch(`${GW}/policy`).then(r => r.json());
+      setStepProgress("");
+      setResults(prev => ({ ...prev, policy: { rules: (updated.rules || []).length, hash: updated.policy_hash?.slice(0, 24), applied: missing.map((m: any) => m.type) } }));
+    } else {
+      setStepProgress("");
+      setResults(prev => ({ ...prev, policy: { rules: rules.length, hash: pol.policy_hash?.slice(0, 24), applied: [] } }));
+    }
   }
 
   async function runStep4_Spawn() {
@@ -1175,22 +1194,22 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
   }
 
   async function runStep8_Investigate(agentId: string) {
-    setStepProgress("Gemini 2.5 Pro assembling incident timeline + evidence...");
+    setStepProgress("Gemini 2.5 Pro assembling incident timeline + evidence + containment...");
     const d = await postJson(`${BASE}/api/agents/investigator/investigate`, { tenant: "hackathon-demo", trigger: { type: "MANUAL", trigger_id: agentId } });
     if (d.error) throw new Error(`Investigator: ${d.error}`);
+    setStepProgress("Fetching containment result...");
+    const existing = await fetch(`${BASE}/api/agents/isolator/isolation-records?tenant=hackathon-demo&limit=5`).then(r => r.json()).catch(() => ({ isolation_records: [] }));
+    const records = existing.isolation_records || [];
+    const isolated = records[0];
     setStepProgress("");
-    setResults(prev => ({ ...prev, investigator: d }));
-    return d.incident?.incident_id || d.incident_id;
+    setResults(prev => ({
+      ...prev,
+      investigator: d,
+      isolator: isolated?.body || isolated || null,
+    }));
   }
 
-  async function runStep9_Isolate(incidentId: string) {
-    setStepProgress("Gemini 2.5 Pro analyzing containment options...");
-    const d = await postJson(`${BASE}/api/agents/isolator/isolate`, { tenant: "hackathon-demo", trigger: { incident_id: incidentId } });
-    setStepProgress("");
-    setResults(prev => ({ ...prev, isolator: d }));
-  }
-
-  async function runStep10_Recommend() {
+  async function runStep9_Recommend() {
     setStepProgress("Gemini 2.5 Pro detecting patterns + proposing policy changes...");
     const d = await postJson(`${BASE}/api/agents/recommender/recommend-tick`, {});
     setStepProgress("");
@@ -1208,10 +1227,9 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       setStep(5); await runStep5_Bind(agentId);
       setStep(6); await runStep6_Burst(agentId);
       setStep(7); await runStep7_Audit();
-      setStep(8); const incidentId = await runStep8_Investigate(agentId);
-      setStep(9); await runStep9_Isolate(incidentId);
-      setStep(10); await runStep10_Recommend();
-      setStep(11);
+      setStep(8); await runStep8_Investigate(agentId);
+      setStep(9); await runStep9_Recommend();
+      setStep(10);
     } catch (e: any) { setError(e.message || "Pipeline failed"); setStep(0); }
     setAutoRunning(false);
   }
@@ -1230,11 +1248,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
       else if (nextStep === 6) await runStep6_Burst(rogueAgent);
       else if (nextStep === 7) await runStep7_Audit();
       else if (nextStep === 8) await runStep8_Investigate(rogueAgent);
-      else if (nextStep === 9) {
-        const incId = results.investigator?.incident?.incident_id || results.investigator?.incident_id;
-        if (incId) await runStep9_Isolate(incId); else throw new Error("No incident ID from Investigator");
-      }
-      else if (nextStep === 10) { await runStep10_Recommend(); setStep(11); }
+      else if (nextStep === 9) { await runStep9_Recommend(); setStep(10); }
     } catch (e: any) { setError(e.message || "Step failed"); setStep(nextStep - 1); }
     setStepRunning(false);
   }
@@ -1257,13 +1271,12 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     { id: "binding", label: "Bind Policy", icon: Link, idx: 5 },
     { id: "rogue", label: "Rogue Burst", icon: ShieldOff, idx: 6 },
     { id: "auditor", label: "Auditor", icon: Eye, idx: 7 },
-    { id: "investigator", label: "Investigator", icon: AlertTriangle, idx: 8 },
-    { id: "isolator", label: "Isolator", icon: ShieldOff, idx: 9 },
-    { id: "recommender", label: "Recommender", icon: Brain, idx: 10 },
+    { id: "investigator", label: "Investigate + Isolate", icon: AlertTriangle, idx: 8 },
+    { id: "recommender", label: "Recommender", icon: Brain, idx: 9 },
   ];
 
   const running = autoRunning;
-  const manualDone = step >= 11;
+  const manualDone = step >= 10;
   const nextStepInfo = STEPS[step] || null;
 
   return (
