@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Shield, ShieldCheck, ShieldX, Copy, CheckCircle2, XCircle, Terminal, FileText,
-  Loader2, ExternalLink, ChevronRight, Download, Link2, Anchor, Lock, Binary,
+  Loader2, ExternalLink, ChevronRight, Download, Link2, Anchor, Lock, Binary, AlertTriangle,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -719,6 +719,8 @@ function ArtifactAnchoringTab() {
           </Button>
         </div>
         {anchorResult?.status === "anchored" && (<div className="rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-3 mb-4"><div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Anchored {anchorResult.artifact_count} artifacts</span></div><a href={anchorResult.basescan_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"><ExternalLink className="w-3 h-3" /> View on BaseScan</a></div>)}
+        {anchorResult?.status === "skipped" && (<div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 mb-4"><div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-amber-600" /><span className="text-sm font-medium text-amber-700 dark:text-amber-400">Already up to date</span></div><span className="text-xs text-muted-foreground mt-1">{anchorResult.reason || "No new artifacts since last anchor"}</span></div>)}
+        {anchorResult?.status === "error" && (<div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 mb-4"><div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /><span className="text-sm font-medium text-red-700 dark:text-red-400">Anchor failed</span></div><span className="text-xs text-muted-foreground mt-1">{anchorResult.reason || "Unknown error"}</span></div>)}
         {latest ? (<>
           <div className="flex items-center gap-2 mb-4"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Anchored to Base L2</span></div>
           {batchArtifacts.length > 0 && (<div className="rounded-lg border bg-muted/20 p-4 mb-4"><p className="text-xs font-semibold mb-3">What&apos;s in this anchor batch:</p><div className="flex flex-wrap gap-2 mb-3">{Object.entries(typeCounts).map(([t, c]) => (<Badge key={t} className={`text-[10px] ${TYPE_COLORS[t] || ""}`}>{c} {TYPE_LABELS[t] || t}{c !== 1 ? "s" : ""}</Badge>))}</div><p className="text-[11px] text-muted-foreground">{batchArtifacts.length} artifacts (seq {latest.artifact_seq_range?.[0]}&ndash;{latest.artifact_seq_range?.[1]}) in one Merkle tree.</p></div>)}
