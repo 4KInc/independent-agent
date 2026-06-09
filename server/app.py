@@ -782,6 +782,14 @@ async def proxy_agent(agent_name: str, path: str, request: Request):
     async with httpx.AsyncClient(timeout=15) as client:
         try:
             resp = await client.get(url, params=params)
+            ct = resp.headers.get("content-type", "")
+            # Pass through binary responses (PDF, etc.) without JSON parsing
+            if "application/pdf" in ct or "application/octet-stream" in ct:
+                from fastapi.responses import Response
+                headers = {}
+                if "content-disposition" in resp.headers:
+                    headers["content-disposition"] = resp.headers["content-disposition"]
+                return Response(content=resp.content, media_type=ct, headers=headers)
             try:
                 return resp.json()
             except Exception:

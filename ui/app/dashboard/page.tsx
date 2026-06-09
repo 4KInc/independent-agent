@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Shield, ShieldOff, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
   ChevronRight, Copy, ExternalLink, CheckCircle2, XCircle,
-  AlertTriangle, Clock, Activity, Anchor, Link,
+  AlertTriangle, Clock, Activity, Anchor, Link, FileText,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -184,6 +184,16 @@ function GatewayView() {
                 >
                   {copiedSeq === seq ? <><CheckCircle2 className="w-3 h-3 text-emerald-600" /><span className="text-[10px] text-emerald-600">Copied</span></> : <Copy className="w-3 h-3 text-muted-foreground hover:text-foreground" />}
                 </button>
+                <a
+                  href={`${BASE}/api/agents/gateway/chain/${seq}/pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Download claim packet PDF"
+                  className="shrink-0 p-1 rounded hover:bg-muted/50 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <FileText className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+                </a>
               </div>
               {selectedSeq === seq && (
                 <div className="ml-8 mt-1 mb-2 rounded border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-3">
