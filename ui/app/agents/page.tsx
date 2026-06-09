@@ -31,7 +31,7 @@ function b64url(buf: Uint8Array): string {
 
 // ─── Agent Registration Form ─────────────────────────────────────────────────
 
-type FormMode = "generate" | "paste";
+type FormMode = "generate" | "paste" | "url";
 
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [mode, setMode] = useState<FormMode>("generate");
@@ -41,6 +41,12 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [privateKeyObj, setPrivateKeyObj] = useState<CryptoKey | null>(null);
   const [privateKeyPem, setPrivateKeyPem] = useState("");
   const [keySaved, setKeySaved] = useState(false);
+  const [urlFetchedKey, setUrlFetchedKey] = useState<any>(null);
+  const [urlFetching, setUrlFetching] = useState(false);
+  const [urlFetchError, setUrlFetchError] = useState("");
+  const [pastedPrivateKeyPem, setPastedPrivateKeyPem] = useState("");
+  const [pastedPrivateKeyObj, setPastedPrivateKeyObj] = useState<CryptoKey | null>(null);
+  const [pastedPrivateKeyError, setPastedPrivateKeyError] = useState("");
   const [agentCardUrl, setAgentCardUrl] = useState("");
   const [liveChallengeUrl, setLiveChallengeUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,6 +86,51 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   const pasteResult = parsePastedKey();
+
+  // Import pasted PEM into CryptoKey when it changes
+  useEffect(() => {
+    if (!pastedPrivateKeyPem.trim()) { setPastedPrivateKeyObj(null); setPastedPrivateKeyError(""); return; }
+    (async () => {
+      try {
+        const pem = pastedPrivateKeyPem.trim();
+        const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/, "").replace(/-----END PRIVATE KEY-----/, "").replace(/\s/g, "");
+        const der = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const key = await crypto.subtle.importKey("pkcs8", der, { name: "Ed25519" } as any, false, ["sign"]);
+        setPastedPrivateKeyObj(key);
+        setPastedPrivateKeyError("");
+      } catch (e: any) {
+        setPastedPrivateKeyObj(null);
+        setPastedPrivateKeyError("Could not import private key. Ensure it's a valid Ed25519 PKCS8 PEM.");
+      }
+    })();
+  }, [pastedPrivateKeyPem]);
+
+  // Fetch public key from agent card URL
+  async function fetchKeyFromCard() {
+    setUrlFetching(true); setUrlFetchError(""); setUrlFetchedKey(null);
+    try {
+      // Proxy through our backend to avoid CORS
+      const cardUrl = agentCardUrl.trim();
+      const resp = await fetch(`${BASE}/api/agents/gateway/agents/fetch-card?url=${encodeURIComponent(cardUrl)}`);
+      if (!resp.ok) {
+        // Fallback: try direct fetch (works if CORS is enabled on the agent)
+        const directResp = await fetch(cardUrl);
+        if (!directResp.ok) throw new Error(`Card URL returned ${directResp.status}`);
+        const card = await directResp.json();
+        const key = card.signing_key || card.public_key || card.authentication?.signing_key;
+        if (!key?.x) throw new Error("Card does not contain a signing_key with x value");
+        setUrlFetchedKey(key);
+      } else {
+        const card = await resp.json();
+        const key = card.signing_key || card.public_key || card.authentication?.signing_key;
+        if (!key?.x) throw new Error("Card does not contain a signing_key with x value");
+        setUrlFetchedKey(key);
+      }
+    } catch (e: any) {
+      setUrlFetchError(e.message || "Could not fetch agent card");
+    }
+    setUrlFetching(false);
+  }
 
   // Generate keypair using Web Crypto
   async function generateKeypair() {
@@ -136,15 +187,35 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
     setError("");
     setLoading(true);
 
-    const jwk = mode === "generate" ? generatedJwk : pasteResult.jwk;
-    if (!jwk) {
-      setError("No valid public key available");
+    // URL mode: use the dedicated register-by-url gateway endpoint
+    if (mode === "url") {
+      try {
+        const resp = await fetch(`${BASE}/api/agents/gateway/agents/register-by-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_id: agentId,
+            agent_card_url: agentCardUrl.trim(),
+            live_challenge_url: liveChallengeUrl.trim(),
+          }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === "registered") {
+          setSuccess(data);
+          onSuccess();
+        } else {
+          setError(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || data));
+        }
+      } catch (e: any) {
+        setError(`Could not reach the Gateway: ${e.message}`);
+      }
       setLoading(false);
       return;
     }
 
-    if (mode === "generate" && !privateKeyObj) {
-      setError("Private key not available. Please regenerate the keypair.");
+    const jwk = mode === "generate" ? generatedJwk : pasteResult.jwk;
+    if (!jwk) {
+      setError("No valid public key available");
       setLoading(false);
       return;
     }
@@ -176,16 +247,14 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       });
       const msgBytes = new TextEncoder().encode(message);
 
-      let sigB64: string;
-      if (mode === "generate" && privateKeyObj) {
-        // Sign with Web Crypto
-        const sigBuf = await crypto.subtle.sign("Ed25519" as any, privateKeyObj, msgBytes);
-        sigB64 = b64url(new Uint8Array(sigBuf));
-      } else {
-        setError("Paste mode requires signing externally. Use 'Generate for me' mode for browser-based PoP.");
+      const signingKey = mode === "generate" ? privateKeyObj : pastedPrivateKeyObj;
+      if (!signingKey) {
+        setError("No private key available for signing. Generate a keypair or paste your private key PEM.");
         setLoading(false);
         return;
       }
+      const sigBuf = await crypto.subtle.sign("Ed25519" as any, signingKey, msgBytes);
+      const sigB64 = b64url(new Uint8Array(sigBuf));
 
       // Step 3: Register with proof
       const payload: any = {
@@ -233,12 +302,19 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const canSubmit =
     nameValid && idValid &&
     !loading &&
-    mode === "generate" && generatedJwk && keySaved && privateKeyObj !== null;
+    ((mode === "generate" && generatedJwk && keySaved && privateKeyObj !== null) ||
+     (mode === "paste" && pasteResult.jwk !== null && pastedPrivateKeyObj !== null) ||
+     (mode === "url" && agentCardUrl.trim() !== "" && liveChallengeUrl.trim() !== ""));
 
   // Reset form
   function reset() {
     setAgentName("");
     setPastedKey("");
+    setPastedPrivateKeyPem("");
+    setPastedPrivateKeyObj(null);
+    setPastedPrivateKeyError("");
+    setUrlFetchedKey(null);
+    setUrlFetchError("");
     setAgentCardUrl("");
     setLiveChallengeUrl("");
     setGeneratedJwk(null);
@@ -362,6 +438,10 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               variant={mode === "paste" ? "default" : "outline"} size="sm"
               onClick={() => setMode("paste")} type="button"
             >Paste my own</Button>
+            <Button
+              variant={mode === "url" ? "default" : "outline"} size="sm"
+              onClick={() => setMode("url")} type="button"
+            >Register by URL</Button>
           </div>
         </div>
 
@@ -411,21 +491,76 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
 
         {/* Paste mode */}
         {mode === "paste" && (
-          <div className="space-y-2">
-            <textarea
-              className="w-full font-[var(--font-geist-mono)] text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-3 min-h-20 resize-y"
-              placeholder={'Paste Ed25519 JWK JSON:\n{"kty":"OKP","crv":"Ed25519","x":"..."}\n\nOr paste the raw base64url public key (x value)'}
-              value={pastedKey}
-              onChange={e => setPastedKey(e.target.value)}
-            />
-            {pasteResult.error && <p className="text-xs text-rose-500">{pasteResult.error}</p>}
-            {pasteResult.jwk && <p className="text-xs text-emerald-600">Valid Ed25519 public key detected</p>}
-            <p className="text-xs text-amber-600">Note: Browser registration requires proof of possession. Use "Generate for me" to register via the browser, or use the CLI for externally-generated keys.</p>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Public Key (JWK or raw base64url x value)</label>
+              <textarea
+                className="w-full font-[var(--font-geist-mono)] text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-3 min-h-16 resize-y"
+                placeholder={'{"kty":"OKP","crv":"Ed25519","x":"..."}\n\nOr paste the raw base64url x value (43 chars)'}
+                value={pastedKey}
+                onChange={e => setPastedKey(e.target.value)}
+              />
+              {pasteResult.error && <p className="text-xs text-rose-500">{pasteResult.error}</p>}
+              {pasteResult.jwk && <p className="text-xs text-emerald-600">Valid Ed25519 public key detected</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Private Key (PEM) — needed to sign proof of possession</label>
+              <textarea
+                className="w-full font-[var(--font-geist-mono)] text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-3 min-h-16 resize-y"
+                placeholder={"-----BEGIN PRIVATE KEY-----\nMC4CAQ....\n-----END PRIVATE KEY-----"}
+                value={pastedPrivateKeyPem}
+                onChange={e => setPastedPrivateKeyPem(e.target.value)}
+              />
+              {pastedPrivateKeyObj && <p className="text-xs text-emerald-600">Private key loaded — ready to sign PoP</p>}
+              {pastedPrivateKeyPem.trim() && !pastedPrivateKeyObj && pastedPrivateKeyError && <p className="text-xs text-rose-500">{pastedPrivateKeyError}</p>}
+              <p className="text-xs text-muted-foreground">The private key stays in your browser and is never sent to the server. It signs the registration challenge locally.</p>
+            </div>
           </div>
         )}
 
-        {/* Verification URLs (optional, side by side) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* URL mode — fetch key from card, agent signs PoP */}
+        {mode === "url" && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-blue-500/20 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+              <p className="text-xs text-blue-800 dark:text-blue-300">
+                Enter your agent&apos;s card URL. Gate will fetch the public key from the card, send a PoP challenge to the agent&apos;s liveness endpoint,
+                and the agent signs it with its own private key. No keys leave the agent.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Agent Card URL <span className="text-rose-500">*</span></label>
+                <input type="url"
+                  className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)] text-xs"
+                  placeholder="https://my-agent.example.com/.well-known/agent-card.json"
+                  value={agentCardUrl} onChange={e => setAgentCardUrl(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Live Challenge URL <span className="text-rose-500">*</span></label>
+                <input type="url"
+                  className="w-full text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 font-[var(--font-geist-mono)] text-xs"
+                  placeholder="https://my-agent.example.com/live-challenge"
+                  value={liveChallengeUrl} onChange={e => setLiveChallengeUrl(e.target.value)} />
+              </div>
+            </div>
+            {urlFetchedKey && (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 space-y-1">
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Public key fetched from agent card</p>
+                <code className="text-[11px] font-[var(--font-geist-mono)] text-muted-foreground">x: {urlFetchedKey.x}</code>
+              </div>
+            )}
+            {urlFetchError && <p className="text-xs text-rose-500">{urlFetchError}</p>}
+            {!urlFetchedKey && agentCardUrl.trim() && (
+              <Button variant="outline" size="sm" onClick={fetchKeyFromCard} disabled={urlFetching} type="button">
+                {urlFetching ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                Fetch Public Key from Card
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Verification URLs (optional, side by side) — only show for generate/paste modes */}
+        {mode !== "url" && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
               Agent Card URL <span className="text-xs text-muted-foreground">(optional)</span>
@@ -446,7 +581,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               value={liveChallengeUrl} onChange={e => setLiveChallengeUrl(e.target.value)} />
             <p className="text-xs text-muted-foreground">Proves the agent is reachable and controls the key.</p>
           </div>
-        </div>
+        </div>}
 
         {/* Error */}
         {error && (
@@ -509,6 +644,7 @@ function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loadi
           <tr className="border-b text-left text-muted-foreground">
             <th className="py-2 pr-4 font-medium">Agent ID</th>
             <th className="py-2 pr-4 font-medium">Key ID</th>
+            <th className="py-2 pr-4 font-medium">Status</th>
             <th className="py-2 pr-4 font-medium">Card</th>
             <th className="py-2 pr-4 font-medium">Live</th>
             <th className="py-2 pr-4 font-medium">Attestation</th>
@@ -533,6 +669,13 @@ function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loadi
                     <Copy className="w-3 h-3" />
                   </button>
                 </div>
+              </td>
+              <td className="py-2.5 pr-4">
+                {agent.status === "revoked" ? (
+                  <Badge className="text-[10px] bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20">Revoked</Badge>
+                ) : (
+                  <Badge className="text-[10px] bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border-emerald-600/20">Active</Badge>
+                )}
               </td>
               <td className="py-2.5 pr-4">
                 {agent.agent_card_verification === "verified" && (
@@ -708,6 +851,7 @@ function LivenessSummaryCard({ onSweep }: { onSweep: () => void }) {
 export default function AgentsPage() {
   const [agents, setAgents] = useState<any[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
+  const [showRevoked, setShowRevoked] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [checkingAgent, setCheckingAgent] = useState<string | null>(null);
   const [livenessKey, setLivenessKey] = useState(0);
@@ -715,7 +859,7 @@ export default function AgentsPage() {
   const fetchAgents = useCallback(async () => {
     setFetchError(null);
     try {
-      const resp = await fetch(`${BASE}/api/agents/gateway/agents`);
+      const resp = await fetch(`${BASE}/api/agents/gateway/agents?include_revoked=true`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       const data = await resp.json();
       setAgents(data.agents || []);
@@ -728,6 +872,8 @@ export default function AgentsPage() {
   }, []);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
+
+  const filteredAgents = agents.filter(a => showRevoked ? a.status === "revoked" : a.status !== "revoked");
 
   const handleCheckLiveness = async (agentId: string) => {
     setCheckingAgent(agentId);
@@ -760,7 +906,13 @@ export default function AgentsPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">All Registered Agents</CardTitle>
-              <Badge variant="outline" className="text-xs">{agents.length} agents</Badge>
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1">
+                  <button onClick={() => setShowRevoked(false)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${!showRevoked ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Active</button>
+                  <button onClick={() => setShowRevoked(true)} className={`text-xs px-2.5 py-1 rounded-md transition-colors ${showRevoked ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Revoked</button>
+                </div>
+                <Badge variant="outline" className="text-xs">{filteredAgents.length} {showRevoked ? "revoked" : "active"}</Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -770,7 +922,7 @@ export default function AgentsPage() {
                 <button onClick={fetchAgents} className="mt-2 text-sm underline text-amber-900 dark:text-amber-300">Retry</button>
               </div>
             )}
-            <AgentsList agents={agents} loading={agentsLoading} onCheckLiveness={handleCheckLiveness} />
+            <AgentsList agents={filteredAgents} loading={agentsLoading} onCheckLiveness={handleCheckLiveness} />
           </CardContent>
         </Card>
       </div>

@@ -695,6 +695,69 @@ async def mcp_call(body: dict, request: Request):
         return {"tool": tool_name, "error": type(e).__name__, "detail": str(e)[:300]}
 
 
+# --- Agent card fetch + remote PoP signing proxies ---
+
+@app.get("/api/agents/gateway/agents/fetch-card")
+async def fetch_agent_card(url: str, request: Request):
+    """Fetch an agent's A2A card from its URL (avoids CORS)."""
+    _check_rate_limit(_get_ip(request))
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            headers = {}
+            # Add GCP identity token for Cloud Run service-to-service auth
+            try:
+                import google.oauth2.id_token as id_token
+                from google.auth.transport.requests import Request as GRequest
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                audience = f"{parsed.scheme}://{parsed.netloc}"
+                token = id_token.fetch_id_token(GRequest(), audience)
+                headers["Authorization"] = f"Bearer {token}"
+            except Exception:
+                pass
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(resp.status_code, f"Agent card URL returned {resp.status_code}")
+            return resp.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"Could not fetch agent card: {e}")
+
+
+@app.post("/api/agents/gateway/agents/remote-sign")
+async def remote_sign_challenge(request: Request):
+    """Forward a PoP challenge to an agent's liveness URL for signing."""
+    _check_rate_limit(_get_ip(request))
+    body = await request.json()
+    live_url = body.get("live_challenge_url", "")
+    message = body.get("message", "")
+    if not live_url or not message:
+        raise HTTPException(400, "live_challenge_url and message required")
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            headers = {"Content-Type": "application/json"}
+            # Add GCP identity token
+            try:
+                import google.oauth2.id_token as id_token
+                from google.auth.transport.requests import Request as GRequest
+                from urllib.parse import urlparse
+                parsed = urlparse(live_url)
+                audience = f"{parsed.scheme}://{parsed.netloc}"
+                token = id_token.fetch_id_token(GRequest(), audience)
+                headers["Authorization"] = f"Bearer {token}"
+            except Exception:
+                pass
+            resp = await client.post(live_url, json=body, headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(resp.status_code, f"Agent liveness URL returned {resp.status_code}")
+            return resp.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"Could not reach agent: {e}")
+
+
 # --- Multi-agent dashboard proxy endpoints ---
 _AGENT_URLS = {
     "auditor": AUDITOR_URL,

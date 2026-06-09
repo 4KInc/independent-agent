@@ -1191,6 +1191,16 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
     const resp = await fetch(`${BASE}/api/agents/demo-agent/spawn`, { method: "POST" });
     if (!resp.ok) throw new Error("Failed to spawn agent");
     const spawned = await resp.json();
+    // Re-register via register-by-url so card + liveness verification is recorded
+    if (spawned.card_url && spawned.live_challenge_url) {
+      setStepProgress("Verifying agent card + liveness challenge...");
+      try {
+        await fetch(`${GW}/agents/register-by-url`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agent_id: spawned.agent_id, agent_card_url: spawned.card_url, live_challenge_url: spawned.live_challenge_url }),
+        });
+      } catch {}
+    }
     setRogueAgent(spawned.agent_id);
     setStepProgress("");
     setResults(prev => ({ ...prev, spawn: spawned }));
@@ -1590,7 +1600,6 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <SigningKeysSidebar keys={keys} />
             <LivenessSummary />
-            <ArtifactAnchoring />
           </div>
         </div>
 
