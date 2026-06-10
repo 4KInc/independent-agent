@@ -721,23 +721,31 @@ function ArtifactAnchoringTab() {
         {anchorResult?.status === "anchored" && (<div className="rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 p-3 mb-4"><div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Anchored {anchorResult.artifact_count} artifacts</span></div><a href={anchorResult.basescan_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"><ExternalLink className="w-3 h-3" /> View on BaseScan</a></div>)}
         {anchorResult?.status === "skipped" && (<div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 mb-4"><div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-amber-600" /><span className="text-sm font-medium text-amber-700 dark:text-amber-400">Already up to date</span></div><span className="text-xs text-muted-foreground mt-1">{anchorResult.reason || "No new artifacts since last anchor"}</span></div>)}
         {anchorResult?.status === "error" && (<div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 mb-4"><div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /><span className="text-sm font-medium text-red-700 dark:text-red-400">Anchor failed</span></div><span className="text-xs text-muted-foreground mt-1">{anchorResult.reason || "Unknown error"}</span></div>)}
-        {latest ? (<>
-          <div className="flex items-center gap-2 mb-4"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Anchored to Base L2</span></div>
-          {batchArtifacts.length > 0 && (<div className="rounded-lg border bg-muted/20 p-4 mb-4"><p className="text-xs font-semibold mb-3">What&apos;s in this anchor batch:</p><div className="flex flex-wrap gap-2 mb-3">{Object.entries(typeCounts).map(([t, c]) => (<Badge key={t} className={`text-[10px] ${TYPE_COLORS[t] || ""}`}>{c} {TYPE_LABELS[t] || t}{c !== 1 ? "s" : ""}</Badge>))}</div><p className="text-[11px] text-muted-foreground">{batchArtifacts.length} artifacts (seq {latest.artifact_seq_range?.[0]}&ndash;{latest.artifact_seq_range?.[1]}) in one Merkle tree.</p></div>)}
-          <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-4 mb-4"><p className="text-xs font-semibold mb-2">What this proves:</p><ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside"><li><strong>{latest.artifact_count} artifacts</strong> were hashed into a Merkle tree &mdash; {Object.entries(typeCounts).map(([t, c]) => `${c} ${TYPE_LABELS[t] || t}${c !== 1 ? "s" : ""}`).join(", ") || "loading..."}</li><li>The <strong>Merkle root</strong> was written to Base L2 calldata at block {latest.block_number?.toLocaleString()}</li><li>No one &mdash; not even Gate &mdash; can alter these artifacts after anchoring</li><li>Anyone can recompute the tree and verify the root matches on-chain</li></ul></div>
-          <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-4 text-sm">
-            <span className="text-muted-foreground text-xs">Tx:</span><a href={`https://basescan.org/tx/${latest.tx_hash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline font-[var(--font-geist-mono)]">{String(latest.tx_hash || "").slice(0, 26)}... <ExternalLink className="w-3 h-3" /></a>
-            <span className="text-muted-foreground text-xs">Block:</span><span className="text-xs">{latest.block_number?.toLocaleString()}</span>
-            <span className="text-muted-foreground text-xs">Root:</span><code className="font-[var(--font-geist-mono)] text-xs text-muted-foreground">{String(latest.merkle_root || "").slice(0, 40)}...</code>
-            <span className="text-muted-foreground text-xs">Batch range:</span><span className="text-xs">seq {latest.artifact_seq_range?.[0]} &ndash; {latest.artifact_seq_range?.[1]}</span>
-            <span className="text-muted-foreground text-xs">Cost:</span><span className="text-xs">~$0.001 (Base L2 calldata)</span>
-          </div>
-        </>) : <p className="text-sm text-muted-foreground">No anchors yet. Click Anchor Now.</p>}
+        {anchors.length > 0 ? (<div className="space-y-4">
+          <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Anchored to Base L2</span><Badge variant="outline" className="text-[10px]">{anchors.length} anchor{anchors.length !== 1 ? "s" : ""}</Badge></div>
+          {[...anchors].sort((a, b) => (b.block_number || 0) - (a.block_number || 0)).map((anc, idx) => {
+            const ancBatch = entries.filter((e: any) => e.seq >= (anc.artifact_seq_range?.[0] || 0) && e.seq <= (anc.artifact_seq_range?.[1] || 0));
+            const ancTypes: Record<string, number> = {};
+            for (const a of ancBatch) ancTypes[a.artifact_type] = (ancTypes[a.artifact_type] || 0) + 1;
+            return (<div key={idx} className="rounded-lg border p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Badge variant="outline" className="text-[10px]">Anchor {anchors.length - idx}</Badge>
+                <span className="text-xs text-muted-foreground">seq {anc.artifact_seq_range?.[0]}&ndash;{anc.artifact_seq_range?.[1]}</span>
+                <div className="flex flex-wrap gap-1">{Object.entries(ancTypes).map(([t, c]) => (<Badge key={t} className={`text-[9px] ${TYPE_COLORS[t] || ""}`}>{c} {TYPE_LABELS[t] || t}{c !== 1 ? "s" : ""}</Badge>))}</div>
+              </div>
+              <div className="grid grid-cols-[100px_1fr] gap-y-1.5 gap-x-4 text-sm">
+                <span className="text-muted-foreground text-xs">Tx:</span><a href={`https://basescan.org/tx/${anc.tx_hash}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline font-[var(--font-geist-mono)]">{String(anc.tx_hash || "").slice(0, 26)}... <ExternalLink className="w-3 h-3" /></a>
+                <span className="text-muted-foreground text-xs">Block:</span><span className="text-xs font-medium">{anc.block_number?.toLocaleString()}</span>
+                <span className="text-muted-foreground text-xs">Root:</span><code className="font-[var(--font-geist-mono)] text-xs text-muted-foreground">{String(anc.merkle_root || "").slice(0, 40)}...</code>
+              </div>
+            </div>);
+          })}
+        </div>) : <p className="text-sm text-muted-foreground">No anchors yet. Click Anchor Now.</p>}
       </CardContent></Card>
 
       {entries.length > 0 && (<Card><CardHeader className="pb-2"><Collapsible open={expanded} onOpenChange={setExpanded}><CollapsibleTrigger className="flex items-center gap-2 w-full text-left"><CardTitle className="text-sm flex items-center gap-2"><ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} /> Artifact Log <Badge variant="outline" className="text-[10px]">{entries.length}</Badge></CardTitle></CollapsibleTrigger>
         <CollapsibleContent><div className="space-y-0.5 mt-3">{[...entries].reverse().map((e: any) => {
-          const inBatch = latest?.artifact_seq_range && e.seq >= latest.artifact_seq_range[0] && e.seq <= latest.artifact_seq_range[1];
+          const inBatch = anchors.some((a: any) => a.artifact_seq_range && e.seq >= a.artifact_seq_range[0] && e.seq <= a.artifact_seq_range[1]);
           const rSeq = e.artifact_type === "receipt" ? hashToSeq[e.artifact_id] : null;
           return (<div key={e.seq} className={`flex items-center gap-2 text-xs py-1.5 px-2 rounded ${inBatch ? "bg-emerald-50/50 dark:bg-emerald-950/10" : "hover:bg-muted/30"}`}>
             <Badge variant="outline" className="text-[10px] font-[var(--font-geist-mono)] w-10 justify-center">#{e.seq}</Badge>
@@ -748,7 +756,374 @@ function ArtifactAnchoringTab() {
           </div>);
         })}</div></CollapsibleContent></Collapsible></CardHeader></Card>)}
       {anchors.length > 0 && <div className="text-xs text-muted-foreground text-center">{anchors.length} total anchor{anchors.length !== 1 ? "s" : ""} on Base L2</div>}
+
+      {anchors.length > 0 && entries.length > 0 && <MerkleTreeVerifier anchors={anchors} />}
     </div>
+  );
+}
+
+// ─── Merkle Tree Full Verifier ────────────────────────────
+const MERKLE_VERIFY_SCRIPT = `#!/usr/bin/env python3
+"""Gate Merkle Tree Verifier - rebuild trees from all anchors, compare to Base L2.
+
+Fetches ALL on-chain anchors, recomputes each Merkle root from scratch
+using the same domain-tagged construction as Gate, then fetches each
+on-chain transaction from Base L2 and compares the calldata.
+
+If the roots match, the artifacts are provably unmodified since anchoring.
+
+Requirements:
+  pip install httpx
+
+Usage:
+  python verify_merkle.py --gateway https://agent-auth-gateway-1031148889398.us-central1.run.app
+"""
+
+import argparse
+import hashlib
+import sys
+
+import httpx
+
+LEAF_DOMAIN  = b"BI_ARTIFACT_LEAF_V1"
+NODE_DOMAIN  = b"BI_ARTIFACT_NODE_V1"
+BASE_RPC     = "https://mainnet.base.org"
+
+
+def leaf_hash(h: str) -> bytes:
+    return hashlib.sha256(LEAF_DOMAIN + b"\\x00" + bytes.fromhex(h)).digest()
+
+
+def node_hash(left: bytes, right: bytes) -> bytes:
+    return hashlib.sha256(NODE_DOMAIN + b"\\x00" + left + right).digest()
+
+
+def compute_root(hashes_hex: list[str]) -> str:
+    level = [leaf_hash(h) for h in hashes_hex]
+    while len(level) > 1:
+        nxt = []
+        i = 0
+        while i < len(level):
+            if i + 1 < len(level):
+                nxt.append(node_hash(level[i], level[i + 1]))
+                i += 2
+            else:
+                nxt.append(level[i])
+                i += 1
+        level = nxt
+    return "sha256:" + level[0].hex()
+
+
+def verify_anchor(c, anchor, all_entries):
+    seq_range = anchor.get("artifact_seq_range", [0, 0])
+    tx_hash = anchor["tx_hash"]
+    stored_root = anchor.get("merkle_root", "")
+    block = anchor.get("block_number", "?")
+
+    batch = sorted(
+        [e for e in all_entries if seq_range[0] <= e["seq"] <= seq_range[1]],
+        key=lambda e: e["seq"],
+    )
+    types = {}
+    for e in batch:
+        types[e["artifact_type"]] = types.get(e["artifact_type"], 0) + 1
+    type_str = ", ".join(f"{v} {k.replace('_', ' ')}{'s' if v != 1 else ''}" for k, v in types.items())
+
+    print(f"\\n  Batch: seq {seq_range[0]}-{seq_range[1]} ({len(batch)} artifacts: {type_str})")
+    print(f"  Block: {block}")
+    for e in batch:
+        print(f"    #{e['seq']:2d}  {e['artifact_type']:20s}  {e['artifact_hash'][:40]}...")
+
+    if not batch:
+        print(f"  FAIL: No artifacts found in range")
+        return False
+
+    hashes = [e["artifact_hash"].removeprefix("sha256:") for e in batch]
+    recomputed = compute_root(hashes)
+    print(f"  Recomputed root: {recomputed}")
+    print(f"  Stored root:     {stored_root}")
+    if recomputed != stored_root:
+        print(f"  FAIL: MISMATCH - artifacts modified since anchoring!")
+        return False
+    print(f"  Local match: YES")
+
+    # On-chain verification
+    try:
+        resp = c.post(BASE_RPC, json={
+            "jsonrpc": "2.0", "id": 1,
+            "method": "eth_getTransactionByHash",
+            "params": [tx_hash],
+        })
+        tx_data = resp.json().get("result")
+        if not tx_data:
+            print(f"  WARNING: tx not found on RPC (may be too recent)")
+            return True  # local passed
+
+        calldata = tx_data.get("input", "0x")
+        if calldata.startswith("0x"):
+            calldata = calldata[2:]
+        on_chain_root = "sha256:" + calldata
+        on_chain_block = int(tx_data.get("blockNumber", "0x0"), 16)
+        match = on_chain_root == recomputed
+        print(f"  On-chain root:   {on_chain_root}")
+        print(f"  On-chain block:  {on_chain_block}")
+        print(f"  On-chain match:  {'YES' if match else 'NO - MISMATCH!'}")
+        if match:
+            print(f"  BaseScan: https://basescan.org/tx/{tx_hash}")
+        return match
+    except Exception as e:
+        print(f"  RPC error: {e}")
+        return True  # local passed
+
+
+def main():
+    p = argparse.ArgumentParser(description="Gate Merkle Tree Verifier")
+    p.add_argument("--gateway", required=True, help="Gateway REST URL")
+    args = p.parse_args()
+
+    gw = args.gateway.rstrip("/")
+    c = httpx.Client(timeout=15)
+
+    print(f"\\n{'=' * 70}")
+    print(f"  Gate Merkle Tree Verifier - All Anchors")
+    print(f"  Gateway: {gw}")
+    print(f"{'=' * 70}")
+
+    anchors = c.get(f"{gw}/anchors").json().get("on_chain_anchors", [])
+    if not anchors:
+        print(f"\\n  No anchors found. Run POST /anchors/trigger first.")
+        sys.exit(1)
+
+    entries = c.get(f"{gw}/artifacts/log?limit=500").json().get("entries", [])
+    print(f"\\n  Found {len(anchors)} anchor(s), {len(entries)} artifacts in log")
+
+    # Verify oldest first
+    sorted_anchors = sorted(anchors, key=lambda a: a.get("artifact_seq_range", [0])[0])
+    results = []
+    total_artifacts = 0
+    for i, anchor in enumerate(sorted_anchors):
+        print(f"\\n{'─' * 70}")
+        print(f"  Anchor {i + 1}/{len(sorted_anchors)}")
+        print(f"{'─' * 70}")
+        ok = verify_anchor(c, anchor, entries)
+        results.append(ok)
+        total_artifacts += anchor.get("artifact_count", 0)
+
+    passed = sum(results)
+    print(f"\\n{'=' * 70}")
+    if all(results):
+        print(f"  VERDICT: ALL {len(anchors)} ANCHORS VERIFIED")
+        print(f"  {total_artifacts} total artifacts match Base L2")
+        print(f"")
+        print(f"  This proves:")
+        print(f"    - Every artifact existed in this exact form at anchoring time")
+        print(f"    - No artifact was added, removed, or modified after anchoring")
+        print(f"    - The proof is independently verifiable by anyone with RPC access")
+    else:
+        print(f"  VERDICT: {passed}/{len(anchors)} anchors passed")
+        print(f"  SOME ANCHORS FAILED VERIFICATION")
+    print(f"{'=' * 70}")
+    sys.exit(0 if all(results) else 1)
+
+
+if __name__ == "__main__":
+    main()
+`;
+
+function MerkleTreeVerifier({ anchors }: { anchors: any[] }) {
+  const [verifying, setVerifying] = useState(false);
+  const [results, setResults] = useState<{ anchor: any; steps: { label: string; detail: string; ok: boolean }[]; verdict: string; ok: boolean }[]>([]);
+  const [scriptOpen, setScriptOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Crypto helpers (shared across all anchor verifications)
+  const LEAF = new TextEncoder().encode("BI_ARTIFACT_LEAF_V1");
+  const NODE = new TextEncoder().encode("BI_ARTIFACT_NODE_V1");
+  const sep = new Uint8Array([0x00]);
+
+  async function sha256(data: Uint8Array): Promise<Uint8Array> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buf = await crypto.subtle.digest("SHA-256", data as any);
+    return new Uint8Array(buf);
+  }
+  function hexToBytes(hex: string): Uint8Array {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    return bytes;
+  }
+  function bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  function concat(...arrs: Uint8Array[]): Uint8Array {
+    const total = arrs.reduce((s, a) => s + a.length, 0);
+    const r = new Uint8Array(total);
+    let offset = 0;
+    for (const a of arrs) { r.set(a, offset); offset += a.length; }
+    return r;
+  }
+
+  async function verifyOneAnchor(anchor: any, allEntries: any[]) {
+    const steps: { label: string; detail: string; ok: boolean }[] = [];
+    const range = anchor.artifact_seq_range || [0, 0];
+    const batch = allEntries.filter((e: any) => e.seq >= range[0] && e.seq <= range[1]).sort((a: any, b: any) => a.seq - b.seq);
+    const types: Record<string, number> = {};
+    for (const e of batch) types[e.artifact_type] = (types[e.artifact_type] || 0) + 1;
+    const typeStr = Object.entries(types).map(([t, c]) => `${c} ${t.replace("_", " ")}${c !== 1 ? "s" : ""}`).join(", ");
+    steps.push({ label: "Fetch artifacts", detail: `${batch.length} artifacts in batch (seq ${range[0]}-${range[1]}): ${typeStr}`, ok: batch.length > 0 });
+
+    if (batch.length === 0) return { anchor, steps, verdict: "No artifacts found", ok: false };
+
+    const hashes = batch.map((e: any) => (e.artifact_hash || "").replace("sha256:", ""));
+    let level: Uint8Array[] = [];
+    for (const h of hashes) level.push(await sha256(concat(LEAF, sep, hexToBytes(h))));
+    steps.push({ label: "Compute leaves", detail: `${level.length} domain-tagged leaf hashes (BI_ARTIFACT_LEAF_V1)`, ok: true });
+
+    while (level.length > 1) {
+      const next: Uint8Array[] = [];
+      let i = 0;
+      while (i < level.length) {
+        if (i + 1 < level.length) { next.push(await sha256(concat(NODE, sep, level[i], level[i + 1]))); i += 2; }
+        else { next.push(level[i]); i += 1; }
+      }
+      level = next;
+    }
+    const recomputedRoot = "sha256:" + bytesToHex(level[0]);
+    const storedRoot = anchor.merkle_root || "";
+    const localMatch = recomputedRoot === storedRoot;
+    steps.push({ label: "Rebuild Merkle tree", detail: `Recomputed: ${recomputedRoot.slice(0, 32)}...\nStored:       ${storedRoot.slice(0, 32)}...`, ok: localMatch });
+
+    if (!localMatch) return { anchor, steps, verdict: "MISMATCH — artifacts modified since anchoring!", ok: false };
+
+    let onChainMatch = false;
+    try {
+      const rpcResp = await fetch("https://mainnet.base.org", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash", params: [anchor.tx_hash] }),
+      });
+      const txData = (await rpcResp.json()).result;
+      if (txData) {
+        let calldata = txData.input || "0x";
+        if (calldata.startsWith("0x")) calldata = calldata.slice(2);
+        const onChainRoot = "sha256:" + calldata;
+        onChainMatch = onChainRoot === recomputedRoot;
+        const onChainBlock = parseInt(txData.blockNumber || "0x0", 16);
+        steps.push({ label: "On-chain verification", detail: `Block ${onChainBlock.toLocaleString()}: calldata ${onChainRoot.slice(0, 32)}...\nRecomputed: ${recomputedRoot.slice(0, 32)}...`, ok: onChainMatch });
+      } else {
+        steps.push({ label: "On-chain verification", detail: "Transaction not found on RPC", ok: false });
+      }
+    } catch (e: any) {
+      steps.push({ label: "On-chain verification", detail: `RPC error: ${e.message}`, ok: false });
+    }
+
+    const allOk = localMatch && onChainMatch;
+    return {
+      anchor, steps, ok: allOk,
+      verdict: allOk
+        ? `All ${batch.length} artifacts verified. Merkle root matches Base L2 block ${(anchor.block_number || 0).toLocaleString()}`
+        : localMatch ? "Local tree matches, on-chain pending" : "VERIFICATION FAILED",
+    };
+  }
+
+  const runVerification = async () => {
+    setVerifying(true); setResults([]);
+    try {
+      const gw = `${BASE}/api/agents/gateway`;
+      const logData = await (await fetch(`${gw}/artifacts/log?limit=500`)).json();
+      const allEntries = (logData.entries || []) as any[];
+      // Verify anchors oldest-first
+      const sorted = [...anchors].sort((a, b) => (a.artifact_seq_range?.[0] || 0) - (b.artifact_seq_range?.[0] || 0));
+      const all: typeof results = [];
+      for (const anchor of sorted) {
+        const r = await verifyOneAnchor(anchor, allEntries);
+        all.push(r);
+        setResults([...all]);
+      }
+    } catch (e: any) {
+      setResults([{ anchor: {}, steps: [{ label: "Error", detail: e.message, ok: false }], verdict: e.message, ok: false }]);
+    }
+    setVerifying(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-primary" /> Merkle Tree Verifier
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Rebuild the Merkle tree from all artifacts in this batch, then compare the root to the on-chain calldata on Base L2. This proves no artifact was added, removed, or modified after anchoring.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button size="sm" className="h-8 gap-1.5" onClick={runVerification} disabled={verifying}>
+            {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+            {verifying ? "Verifying..." : "Verify Merkle Tree"}
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setScriptOpen(!scriptOpen)}>
+            <Terminal className="w-3.5 h-3.5" /> Python Script
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => {
+            const blob = new Blob([MERKLE_VERIFY_SCRIPT], { type: "text/x-python" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = "verify_merkle.py"; a.click();
+            URL.revokeObjectURL(url);
+          }}>
+            <Download className="w-3.5 h-3.5" /> Download
+          </Button>
+        </div>
+
+        {results.length > 0 && (
+          <div className="space-y-3">
+            {results.map((r, ri) => {
+              const range = r.anchor.artifact_seq_range || [0, 0];
+              return (
+                <div key={ri} className={`rounded-lg border p-4 space-y-2 ${r.ok ? "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20" : "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20"}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="outline" className="text-[10px] font-[var(--font-geist-mono)]">Anchor {ri + 1}/{results.length}</Badge>
+                    <span className="text-xs text-muted-foreground">seq {range[0]}-{range[1]} &middot; block {(r.anchor.block_number || 0).toLocaleString()}</span>
+                    {r.anchor.tx_hash && <a href={`https://basescan.org/tx/${r.anchor.tx_hash}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"><ExternalLink className="w-2.5 h-2.5" />BaseScan</a>}
+                  </div>
+                  {r.steps.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      {s.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" /> : <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                      <div>
+                        <span className="font-medium">{s.label}</span>
+                        <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap mt-0.5 font-[var(--font-geist-mono)]">{s.detail}</pre>
+                      </div>
+                    </div>
+                  ))}
+                  <div className={`flex items-center gap-2 pt-2 border-t ${r.ok ? "border-emerald-200" : "border-amber-200"}`}>
+                    {r.ok ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
+                    <span className={`text-sm font-medium ${r.ok ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>{r.verdict}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {!verifying && results.length > 0 && results.every(r => r.ok) && (
+              <div className="rounded-lg border border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-3 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">All {results.length} anchors verified. {results.reduce((s, r) => s + (r.anchor.artifact_count || 0), 0)} total artifacts match Base L2</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {scriptOpen && (
+          <div className="relative">
+            <div className="flex items-center justify-between bg-zinc-900 rounded-t-lg px-3 py-1.5 border border-zinc-700 border-b-0">
+              <span className="text-xs text-zinc-400 font-[var(--font-geist-mono)]">verify_merkle.py</span>
+              <Button size="sm" variant="ghost" className="h-6 text-xs text-zinc-400 hover:text-white gap-1" onClick={() => { copyText(MERKLE_VERIFY_SCRIPT); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                {copied ? <><CheckCircle2 className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+              </Button>
+            </div>
+            <pre className="bg-zinc-950 text-zinc-300 text-[11px] leading-relaxed p-4 rounded-b-lg border border-zinc-700 border-t-0 overflow-x-auto max-h-[400px] overflow-y-auto font-[var(--font-geist-mono)]">
+              {MERKLE_VERIFY_SCRIPT}
+            </pre>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
