@@ -33,6 +33,13 @@ class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
 app.add_middleware(NoCacheHTMLMiddleware)
 
 if static_dir.exists():
+    @app.get("/")
+    async def serve_root():
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file, media_type="text/html")
+        return HTMLResponse(status_code=404, content="Not found")
+
     @app.get("/{page_name}")
     async def serve_page(page_name: str, request: Request):
         if page_name.startswith("_next") or page_name.startswith("api"):
