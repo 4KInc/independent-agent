@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Shield, ShieldOff, Server, Network, Database, Eye, Brain, Compass, Loader2, RefreshCw,
   ChevronRight, Copy, ExternalLink, CheckCircle2, XCircle,
-  AlertTriangle, Clock, Activity, Anchor, Link, FileText,
+  AlertTriangle, Clock, Activity, Anchor, Link, FileText, Globe, Key,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -62,15 +62,15 @@ function JsonView({ data }: { data: unknown }) {
   );
 }
 
-type AgentInfo = { id: string; name: string; icon: any; type: string; role: string; badgeColor: string };
+type AgentInfo = { id: string; name: string; icon: any; type: string; role: string; badgeColor: string; keysPath: string; a2aCard: string };
 
 const AGENTS: AgentInfo[] = [
-  { id: "gateway", name: "Gateway", icon: Shield, type: "Deterministic", role: "Authorization chokepoint", badgeColor: "bg-zinc-600/15 text-zinc-700 dark:text-zinc-300 border-zinc-600/20" },
-  { id: "auditor", name: "Auditor", icon: Eye, type: "AI · Gemini 2.5 Pro", role: "Compliance audit pipeline", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
-  { id: "investigator", name: "Investigator", icon: AlertTriangle, type: "AI · Gemini 2.5 Pro", role: "Incident synthesis", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
-  { id: "isolator", name: "Isolator", icon: ShieldOff, type: "AI · Gemini 2.5 Pro", role: "Rogue agent quarantine", badgeColor: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20" },
-  { id: "recommender", name: "Recommender", icon: Brain, type: "AI · Gemini 2.5 Pro", role: "Policy change proposals", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20" },
-  { id: "coordinator", name: "Coordinator", icon: Compass, type: "Deterministic + AI", role: "A2A agent directory", badgeColor: "bg-indigo-600/15 text-indigo-700 dark:text-indigo-400 border-indigo-600/20" },
+  { id: "gateway", name: "Gateway", icon: Shield, type: "Deterministic", role: "Authorization chokepoint", badgeColor: "bg-zinc-600/15 text-zinc-700 dark:text-zinc-300 border-zinc-600/20", keysPath: "/keys", a2aCard: "gateway-a2a" },
+  { id: "auditor", name: "Auditor", icon: Eye, type: "AI · Gemini 2.5 Pro", role: "Compliance audit pipeline", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20", keysPath: "/audit-keys", a2aCard: "auditor" },
+  { id: "investigator", name: "Investigator", icon: AlertTriangle, type: "AI · Gemini 2.5 Pro", role: "Incident synthesis", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20", keysPath: "/investigator-keys", a2aCard: "investigator" },
+  { id: "isolator", name: "Isolator", icon: ShieldOff, type: "AI · Gemini 2.5 Pro", role: "Rogue agent quarantine", badgeColor: "bg-rose-600/15 text-rose-700 dark:text-rose-400 border-rose-600/20", keysPath: "/isolator-keys", a2aCard: "isolator" },
+  { id: "recommender", name: "Recommender", icon: Brain, type: "AI · Gemini 2.5 Pro", role: "Policy change proposals", badgeColor: "bg-teal-600/15 text-teal-700 dark:text-teal-400 border-teal-600/20", keysPath: "/recommender-keys", a2aCard: "recommender" },
+  { id: "coordinator", name: "Coordinator", icon: Compass, type: "Deterministic + AI", role: "A2A agent directory", badgeColor: "bg-indigo-600/15 text-indigo-700 dark:text-indigo-400 border-indigo-600/20", keysPath: "/coordinator-keys", a2aCard: "coordinator" },
 ];
 
 function StatusDot({ ok }: { ok?: boolean }) {
@@ -94,6 +94,18 @@ function AgentCard({ agent, health, kid, selected, onClick }: { agent: AgentInfo
           <span className="text-[10px] text-muted-foreground">{health?.ok ? "Healthy" : "Unreachable"}</span>
         </div>
         {kid && <code className="text-[10px] font-[var(--font-geist-mono)] text-muted-foreground block truncate">{kid}</code>}
+        {selected && (
+          <div className="pt-1 space-y-0.5 border-t border-border/50 mt-1">
+            <a href={`${BASE}/api/agents/${agent.a2aCard}/.well-known/agent-card.json`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary transition-colors" onClick={e => e.stopPropagation()}>
+              <Globe className="w-3 h-3 text-muted-foreground shrink-0" />
+              <span className="text-[10px] text-muted-foreground hover:text-primary truncate underline decoration-dotted underline-offset-2">/.well-known/agent-card.json</span>
+            </a>
+            <a href={`${BASE}/api/agents/${agent.id === "gateway" ? "gateway" : agent.a2aCard}${agent.keysPath}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary transition-colors" onClick={e => e.stopPropagation()}>
+              <Key className="w-3 h-3 text-muted-foreground shrink-0" />
+              <span className="text-[10px] text-muted-foreground hover:text-primary truncate underline decoration-dotted underline-offset-2">{agent.keysPath}</span>
+            </a>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -233,7 +245,7 @@ function AuditorView({ pendingAuditId, onAuditIdConsumed }: { pendingAuditId?: s
       .then(r => r.json())
       .then(d => {
         const all = d.reports || [];
-        // Deduplicate by receipt_seq — keep only the latest audit per seq
+        // Deduplicate by receipt_seq -keep only the latest audit per seq
         const bySeq = new Map<number, any>();
         for (const r of all) {
           const seq = r.body?.receipt_seq;
@@ -897,9 +909,9 @@ function ArtifactAnchoring() {
             <div className="rounded border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-2.5 space-y-1.5">
               <p className="text-[10px] font-medium text-blue-800 dark:text-blue-300">What this proves:</p>
               <ul className="text-[10px] text-blue-700 dark:text-blue-400 space-y-0.5 list-disc list-inside">
-                <li><strong>{latest.artifact_count || "—"} artifacts</strong> (receipts, audits, incidents) were hashed into a Merkle tree</li>
+                <li><strong>{latest.artifact_count || "-"} artifacts</strong> (receipts, audits, incidents) were hashed into a Merkle tree</li>
                 <li>The <strong>Merkle root</strong> was written to Base L2 calldata at block {latest.block_number?.toLocaleString()}</li>
-                <li>No one — not even Gate — can alter these artifacts after anchoring</li>
+                <li>No one -not even Gate -can alter these artifacts after anchoring</li>
                 <li>Anyone can recompute the tree from the artifacts and verify the root matches</li>
               </ul>
             </div>
@@ -924,7 +936,7 @@ function ArtifactAnchoring() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground w-16">Artifacts:</span>
-                <span>{latest.artifact_count || "—"} in this batch</span>
+                <span>{latest.artifact_count || "-"} in this batch</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground w-16">Cost:</span>
@@ -934,7 +946,7 @@ function ArtifactAnchoring() {
 
             <p className="text-[9px] text-muted-foreground italic border-t pt-1.5">
               The BaseScan transaction contains the Merkle root in its calldata (click "+ Click to show more" → Input Data on BaseScan to see the raw hex).
-              This root is a cryptographic fingerprint of all {latest.artifact_count || ""} artifacts — changing any single receipt would produce a different root.
+              This root is a cryptographic fingerprint of all {latest.artifact_count || ""} artifacts -changing any single receipt would produce a different root.
             </p>
           </div>
         ) : (
@@ -1459,7 +1471,7 @@ function PipelineSimulator({ onAgentSelect }: { onAgentSelect: (id: string) => v
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                 <span className="text-xs font-medium">Investigation:</span>
                 <Badge className={`text-[10px] ${["HIGH","CRITICAL"].includes(results.investigator.incident?.severity || results.investigator.severity || "") ? "bg-rose-600/15 text-rose-600 border-rose-600/20" : "bg-amber-600/15 text-amber-600 border-amber-600/20"}`} variant="outline">
-                  {results.investigator.incident?.severity || results.investigator.severity || "—"}
+                  {results.investigator.incident?.severity || results.investigator.severity || "-"}
                 </Badge>
                 <span className="text-[11px] text-muted-foreground truncate flex-1">{(results.investigator.incident?.incident_id || "").slice(0, 12)}...</span>
                 <ChevronRight className="w-3 h-3 text-muted-foreground" />
@@ -1571,7 +1583,7 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">Multi-Agent Operations</h1>
-            <TriggerAuditButton />
+            {selectedAgent === "auditor" && <TriggerAuditButton />}
           </div>
           <p className="text-sm text-muted-foreground">Six agents collaborating on AI agent authorization</p>
           <div className="flex items-center gap-4 mt-2">

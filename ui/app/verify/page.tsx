@@ -164,13 +164,13 @@ function StepCard({ step, result }: { step: typeof STEPS_META[0]; result: StepRe
 }
 
 const VERIFY_SCRIPT = `#!/usr/bin/env python3
-"""Gate Receipt Claim Verifier — independent 4-step verification.
+"""Gate Receipt Claim Verifier -independent 4-step verification.
 
 Verifies a Gate receipt WITHOUT trusting the Gateway:
-  Step 1: Ed25519 signature — recompute hash, verify sig with public key
-  Step 2: Hash chain — check prev_receipt links to predecessor
-  Step 3: Merkle inclusion — recompute root from leaf using domain-tagged hashes
-  Step 4: On-chain anchor — fetch tx from Base L2 RPC, compare calldata to root
+  Step 1: Ed25519 signature -recompute hash, verify sig with public key
+  Step 2: Hash chain -check prev_receipt links to predecessor
+  Step 3: Merkle inclusion -recompute root from leaf using domain-tagged hashes
+  Step 4: On-chain anchor -fetch tx from Base L2 RPC, compare calldata to root
 
 Requirements:
   pip install cryptography httpx
@@ -234,7 +234,7 @@ def step1_verify_signature(receipt: dict, keys: list[dict]) -> tuple[bool, list[
     log.append(f"  Claimed hash:      {claimed_hash}")
 
     if computed_hash != claimed_hash:
-        log.append(f"  FAIL: Hash mismatch — receipt body was modified!")
+        log.append(f"  FAIL: Hash mismatch -receipt body was modified!")
         return False, log
     log.append(f"  Hash match: YES")
 
@@ -247,7 +247,7 @@ def step1_verify_signature(receipt: dict, keys: list[dict]) -> tuple[bool, list[
         log.append(f"  Proves: This receipt was signed by the holder of key {kid}")
         return True, log
     except InvalidSignature:
-        log.append(f"  Ed25519 verify: FAIL — signature does not match!")
+        log.append(f"  Ed25519 verify: FAIL -signature does not match!")
         return False, log
 
 
@@ -346,7 +346,7 @@ def step4_verify_on_chain(
 ) -> tuple[bool, list[str]]:
     log = []
     if not proof or not merkle_root:
-        log.append(f"  Skipped — no Merkle proof available")
+        log.append(f"  Skipped -no Merkle proof available")
         return False, log
 
     log_seq = proof.get("log_seq", 0)
@@ -409,7 +409,7 @@ def step4_verify_on_chain(
             log.append(f"  Proves: The Merkle root on Base L2 block {block} EXACTLY matches")
             log.append(f"  the root recomputed from this receipt's inclusion proof.")
             log.append(f"  This receipt existed in this exact form at the time of anchoring.")
-            log.append(f"  No one — not even Gate — can alter it without changing the on-chain root.")
+            log.append(f"  No one -not even Gate -can alter it without changing the on-chain root.")
         else:
             log.append(f"  FAIL: On-chain root does not match recomputed root!")
 
@@ -440,7 +440,7 @@ def main():
     c = httpx.Client(timeout=15)
 
     print(f"\\n{'=' * 70}")
-    print(f"  Gate Receipt Claim Verifier — Independent 4-Step Verification")
+    print(f"  Gate Receipt Claim Verifier -Independent 4-Step Verification")
     print(f"  Gateway: {gw}")
     print(f"  Receipt: seq #{args.seq}")
     print(f"{'=' * 70}")
@@ -536,7 +536,7 @@ def main():
         if not ok3 or not ok4:
             print(f"  Merkle/anchor verification pending")
     else:
-        print(f"  VERIFICATION FAILED — receipt may be tampered")
+        print(f"  VERIFICATION FAILED -receipt may be tampered")
     print(f"{'=' * 70}")
     sys.exit(0 if ok1 and ok2 else 1)
 
@@ -662,7 +662,7 @@ function ClaimVerifierTab() {
               <CardTitle className="text-sm flex items-center gap-2"><Terminal className="w-4 h-4" /> Python Script <Badge variant="outline" className="text-[10px]">verify_claim.py</Badge></CardTitle>
               <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${scriptOpen ? "rotate-90" : ""}`} />
             </CollapsibleTrigger>
-            <p className="text-xs text-muted-foreground mt-2 pb-3">Full offline verification — fetches the actual Base L2 transaction via RPC and compares calldata to the recomputed Merkle root.</p>
+            <p className="text-xs text-muted-foreground mt-2 pb-3">Full offline verification -fetches the actual Base L2 transaction via RPC and compares calldata to the recomputed Merkle root.</p>
           </CardHeader>
           <CollapsibleContent><CardContent className="pt-0">
             <div className="flex gap-1.5 mb-3">
@@ -992,7 +992,7 @@ function MerkleTreeVerifier({ anchors }: { anchors: any[] }) {
     const localMatch = recomputedRoot === storedRoot;
     steps.push({ label: "Rebuild Merkle tree", detail: `Recomputed: ${recomputedRoot.slice(0, 32)}...\nStored:       ${storedRoot.slice(0, 32)}...`, ok: localMatch });
 
-    if (!localMatch) return { anchor, steps, verdict: "MISMATCH — artifacts modified since anchoring!", ok: false };
+    if (!localMatch) return { anchor, steps, verdict: "MISMATCH -artifacts modified since anchoring!", ok: false };
 
     let onChainMatch = false;
     try {

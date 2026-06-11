@@ -43,7 +43,7 @@ const ACTION_TYPES = [
   { value: "update", label: "Update", risk: "medium", description: "Modify existing objects.", approval: false },
   { value: "delete", label: "Delete", risk: "high", description: "Destructive: removes data. Irreversible.", approval: true },
   { value: "execute", label: "Execute", risk: "high", description: "Run code or trigger an operation. Side effects.", approval: true },
-  { value: "admin", label: "Admin", risk: "critical", description: "Administrative access — policy changes, key rotation.", approval: true },
+  { value: "admin", label: "Admin", risk: "critical", description: "Administrative access -policy changes, key rotation.", approval: true },
 ];
 
 function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
@@ -142,7 +142,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               value={actionType} onChange={e => handleActionTypeChange(e.target.value)}>
               <option value="">Select action type</option>
               {ACTION_TYPES.map(a => (
-                <option key={a.value} value={a.value}>{a.label} — {a.description.slice(0, 40)}</option>
+                <option key={a.value} value={a.value}>{a.label} -{a.description.slice(0, 40)}</option>
               ))}
             </select>
           </div>

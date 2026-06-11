@@ -65,7 +65,7 @@ function ToolCard({ tool }: { tool: any }) {
       const jwk = JSON.stringify({ kty: "OKP", crv: "Ed25519", x });
       setFormData(prev => ({ ...prev, public_key_jwk: jwk }));
     } catch {
-      setFormData(prev => ({ ...prev, public_key_jwk: '(browser does not support Ed25519 via WebCrypto — paste a JWK manually)' }));
+      setFormData(prev => ({ ...prev, public_key_jwk: '(browser does not support Ed25519 via WebCrypto -paste a JWK manually)' }));
     }
   };
 

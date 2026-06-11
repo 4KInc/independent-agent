@@ -438,7 +438,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        {/* Reachability URL — shown for all types */}
+        {/* Reachability URL -shown for all types */}
         {resourceType && (
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Reachability URL <span className="text-xs text-muted-foreground">(optional)</span></label>
@@ -518,7 +518,7 @@ function ResourceDetail({ resource, receipts }: { resource: any; receipts: any[]
         <span className="text-muted-foreground">Version</span><span>{resource.version || 1}</span>
         <span className="text-muted-foreground">Verification</span>
         <VerificationBadge status={resource.verification || resource.verification_status || "skipped"} reason={resource.verification_reason} />
-        <span className="text-muted-foreground">Registered</span><span>{resource.registered_at ? new Date(resource.registered_at).toISOString().slice(0, 19) : "—"}</span>
+        <span className="text-muted-foreground">Registered</span><span>{resource.registered_at ? new Date(resource.registered_at).toISOString().slice(0, 19) : "-"}</span>
         {resource.metadata && Object.keys(resource.metadata).length > 0 && (
           <>
             <span className="text-muted-foreground">Metadata</span>
@@ -611,7 +611,7 @@ function ResourcesList({ resources, loading, receipts, onRevoke }: {
                   <FileText className="w-2.5 h-2.5 mr-0.5" />{count}
                 </Badge>
               ) : (
-                <span className="text-[10px] text-muted-foreground shrink-0">—</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">-</span>
               )}
               <span className="text-[10px] text-muted-foreground shrink-0 w-14">{res.registered_at ? timeAgo(res.registered_at) : ""}</span>
               <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform shrink-0 ${isOpen ? "rotate-90" : ""}`} />

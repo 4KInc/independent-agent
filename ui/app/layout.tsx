@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gate — Cryptographic Governance for AI Agents",
+  title: "Gate - Cryptographic Governance for AI Agents",
   description: "Enterprise command center for AI agent authorization, audit, and compliance",
 };
 

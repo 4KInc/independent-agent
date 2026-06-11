@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Shield, Plus, Loader2, RefreshCw, Trash2, CheckCircle2, Link2, FlaskConical, ArrowRight, Sparkles,
+  Shield, Plus, Loader2, RefreshCw, Trash2, CheckCircle2, Link2, FlaskConical, ArrowRight, Sparkles, Upload,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 
@@ -200,7 +200,7 @@ function PolicyView({ policy, onRefresh, onDeleteBinding }: {
         </CardContent>
       </Card>
 
-      {/* Other rules — human readable */}
+      {/* Other rules -human readable */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">System Rules</CardTitle>
@@ -246,6 +246,9 @@ function PolicySimulator({ currentPolicy }: { currentPolicy: any }) {
   const [nlInput, setNlInput] = useState("");
   const [generating, setGenerating] = useState(false);
   const [genExplanation, setGenExplanation] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [applyConfirm, setApplyConfirm] = useState(false);
+  const [applyResult, setApplyResult] = useState<string>("");
 
   // Seed with current policy rules on mount
   useEffect(() => {
@@ -316,6 +319,30 @@ function PolicySimulator({ currentPolicy }: { currentPolicy: any }) {
       }
     } catch { setError("Could not reach the Gateway."); }
     setLoading(false);
+  }
+
+  async function applyPolicy() {
+    setApplying(true); setError(""); setApplyResult("");
+    try {
+      const resp = await fetch(`${BASE}/api/agents/gateway/policy`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: currentPolicy?.version || "1",
+          rules,
+          require_resource_registration: currentPolicy?.require_resource_registration ?? false,
+        }),
+      });
+      if (!resp.ok) {
+        const d = await resp.json().catch(() => ({}));
+        setError(typeof d.detail === "string" ? d.detail : `HTTP ${resp.status}`);
+      } else {
+        const d = await resp.json();
+        setApplyResult(`Policy applied. New hash: ${d.policy_hash?.slice(0, 24) || "ok"}...`);
+        setTimeout(() => setApplyResult(""), 8000);
+      }
+    } catch { setError("Could not reach the Gateway."); }
+    setApplying(false); setApplyConfirm(false);
   }
 
   return (
@@ -415,6 +442,25 @@ function PolicySimulator({ currentPolicy }: { currentPolicy: any }) {
             {loading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <FlaskConical className="w-3 h-3 mr-1" />}
             Run Simulation
           </Button>
+          {!applyConfirm ? (
+            <Button variant="outline" size="sm" onClick={() => setApplyConfirm(true)} disabled={rules.length === 0 || applying}
+              className="text-xs border-emerald-500/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/20">
+              <Upload className="w-3 h-3 mr-1" /> Apply Policy
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-amber-600 font-medium">Apply to live gateway?</span>
+              <Button size="sm" onClick={applyPolicy} disabled={applying}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7">
+                {applying ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                Confirm
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setApplyConfirm(false)} className="text-xs h-7">
+                Cancel
+              </Button>
+            </div>
+          )}
+          {applyResult && <span className="text-xs text-emerald-600">{applyResult}</span>}
         </div>
 
         {error && (

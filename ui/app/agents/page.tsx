@@ -76,7 +76,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
       }
       return { jwk: null, error: "Expected JWK with kty: OKP, crv: Ed25519, x: <base64url>" };
     } catch {
-      // Not JSON — try as raw base64url x value
+      // Not JSON -try as raw base64url x value
       const cleaned = trimmed.replace(/\s/g, "");
       if (/^[A-Za-z0-9_-]{42,44}$/.test(cleaned)) {
         return { jwk: { kty: "OKP", crv: "Ed25519", x: cleaned }, error: "" };
@@ -353,7 +353,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           {success.agent_card_verification === "verified" && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-600">
               <CheckCircle2 className="w-3 h-3" />
-              A2A card verified — registered key matches the card
+              A2A card verified -registered key matches the card
             </div>
           )}
           {success.agent_card_verification === "failed" && (
@@ -369,13 +369,13 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           )}
           {success.agent_card_verification === "skipped" && agentCardUrl === "" && (
             <div className="text-xs text-muted-foreground">
-              A2A card verification skipped — no card URL provided.
+              A2A card verification skipped -no card URL provided.
             </div>
           )}
           {success.live_challenge_verification === "verified" && (
             <div className="flex items-center gap-1.5 text-xs text-emerald-600">
               <CheckCircle2 className="w-3 h-3" />
-              Live challenge passed — agent is reachable and controls the key
+              Live challenge passed -agent is reachable and controls the key
             </div>
           )}
           {success.live_challenge_verification === "failed" && (
@@ -504,21 +504,21 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
               {pasteResult.jwk && <p className="text-xs text-emerald-600">Valid Ed25519 public key detected</p>}
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Private Key (PEM) — needed to sign proof of possession</label>
+              <label className="text-xs font-medium text-muted-foreground">Private Key (PEM) -needed to sign proof of possession</label>
               <textarea
                 className="w-full font-[var(--font-geist-mono)] text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md p-3 min-h-16 resize-y"
                 placeholder={"-----BEGIN PRIVATE KEY-----\nMC4CAQ....\n-----END PRIVATE KEY-----"}
                 value={pastedPrivateKeyPem}
                 onChange={e => setPastedPrivateKeyPem(e.target.value)}
               />
-              {pastedPrivateKeyObj && <p className="text-xs text-emerald-600">Private key loaded — ready to sign PoP</p>}
+              {pastedPrivateKeyObj && <p className="text-xs text-emerald-600">Private key loaded -ready to sign PoP</p>}
               {pastedPrivateKeyPem.trim() && !pastedPrivateKeyObj && pastedPrivateKeyError && <p className="text-xs text-rose-500">{pastedPrivateKeyError}</p>}
               <p className="text-xs text-muted-foreground">The private key stays in your browser and is never sent to the server. It signs the registration challenge locally.</p>
             </div>
           </div>
         )}
 
-        {/* URL mode — fetch key from card, agent signs PoP */}
+        {/* URL mode -fetch key from card, agent signs PoP */}
         {mode === "url" && (
           <div className="space-y-3">
             <div className="rounded-md border border-blue-500/20 bg-blue-50/50 dark:bg-blue-950/20 p-3">
@@ -559,7 +559,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        {/* Verification URLs (optional, side by side) — only show for generate/paste modes */}
+        {/* Verification URLs (optional, side by side) -only show for generate/paste modes */}
         {mode !== "url" && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
@@ -689,7 +689,7 @@ function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loadi
                   </span>
                 )}
                 {(!agent.agent_card_verification || agent.agent_card_verification === "skipped") && (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-muted-foreground">-</span>
                 )}
               </td>
               <td className="py-2.5 pr-4">
@@ -704,7 +704,7 @@ function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loadi
                   </span>
                 )}
                 {(!agent.live_challenge_verification || agent.live_challenge_verification === "skipped") && (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-muted-foreground">-</span>
                 )}
               </td>
               <td className="py-2.5 pr-4">
@@ -729,7 +729,7 @@ function AgentsList({ agents, loading, onCheckLiveness }: { agents: any[]; loadi
               <td className="py-2.5">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="w-3 h-3" />
-                  {agent.registered_at ? timeAgo(agent.registered_at) : "—"}
+                  {agent.registered_at ? timeAgo(agent.registered_at) : "-"}
                 </div>
               </td>
             </tr>
@@ -835,7 +835,7 @@ function LivenessSummaryCard({ onSweep }: { onSweep: () => void }) {
           <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-2">
             <p className="text-xs text-amber-700 dark:text-amber-400">
               <AlertTriangle className="w-3 h-3 inline mr-1" />
-              {degraded} agent{degraded > 1 ? "s" : ""} with degraded liveness — authorization may be restricted.
+              {degraded} agent{degraded > 1 ? "s" : ""} with degraded liveness -authorization may be restricted.
               {(s.STALE || 0) > 0 && " STALE agents are denied new authorizations."}
               {(s.SUSPENDED || 0) > 0 && " SUSPENDED agents are fully locked out."}
             </p>

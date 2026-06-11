@@ -49,6 +49,7 @@ INVESTIGATOR_URL = os.environ.get("INVESTIGATOR_URL", "https://agent-auth-invest
 COORDINATOR_URL = os.environ.get("COORDINATOR_URL", "https://agent-auth-gateway-coordinator-lwmxdereeq-uc.a.run.app")
 DEMO_AGENT_URL = os.environ.get("DEMO_AGENT_URL", "https://demo-agent-1031148889398.us-central1.run.app")
 ISOLATOR_URL = os.environ.get("ISOLATOR_URL", "https://agent-auth-isolator-1031148889398.us-central1.run.app")
+GATEWAY_A2A_URL = os.environ.get("GATEWAY_A2A_URL", "https://agent-auth-gateway-a2a-1031148889398.us-central1.run.app")
 
 # --- Rate limiting (in-memory, per IP) ---
 _rate_buckets: dict[str, collections.deque] = {}
@@ -766,6 +767,7 @@ _AGENT_URLS = {
     "coordinator": COORDINATOR_URL,
     "isolator": ISOLATOR_URL,
     "gateway": GATEWAY_REST_URL,
+    "gateway-a2a": GATEWAY_A2A_URL,
     "demo-agent": DEMO_AGENT_URL,
 }
 
